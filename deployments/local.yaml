@@ -1,0 +1,10 @@
+http:
+  listen: 0.0.0.0:8080
+  public_url: http://host.docker.internal:8080
+database:
+  dsn: /var/lib/smart-route/smart-route.db
+auth:
+  insecure_local: true
+telemetry:
+  enabled: true
+  metrics: true

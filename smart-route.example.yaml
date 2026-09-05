@@ -1,0 +1,42 @@
+http:
+  listen: 127.0.0.1:8080
+  public_url: http://host.docker.internal:8080
+database:
+  dsn: smart-route.db
+auth:
+  insecure_local: true
+providers:
+  docker:
+    type: localdocker
+    config:
+      image: smart-route-worker:latest
+  # Production example (requires an existing Fly app and FLY_API_TOKEN):
+  # cloud:
+  #   type: fly
+  #   config:
+  #     app: my-smart-route-workers
+  #     image: registry.fly.io/my-smart-route-workers:v1.0.0
+  #     token_env: FLY_API_TOKEN
+pools:
+  - name: local
+    provider: docker
+    capabilities: [shell]
+    executor_kinds: [process]
+    min_replicas: 0
+    max_replicas: 2
+    worker_concurrency: 1
+    startup_timeout: 2m
+telemetry:
+  enabled: true
+  metrics: true
+recovery:
+  # Use durable shared storage and never checkpoint injected credentials.
+  checkpoint_directory: checkpoints
+  strategy: application # or provider_snapshot for a Snapshotter-capable provider
+  checkpoint_ttl: 24h
+  retain_latest: 3
+  delete_on_close: false
+  interval: 5s
+  backoff_base: 1s
+  backoff_max: 1m
+  max_attempts: 5

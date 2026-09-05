@@ -1,0 +1,47 @@
+name: ci
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      cloud_integration:
+        description: Run credentialed Fly integration tests
+        required: false
+        type: boolean
+        default: false
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with: {go-version: '1.22.x', cache: true}
+      - name: Formatting
+        run: test -z "$(gofmt -l $(find . -name '*.go' -not -path './vendor/*'))"
+      - run: go vet ./...
+      - run: go test ./...
+      - run: go test -race ./...
+      - name: Build images
+        run: make images VERSION=ci GIT_SHA=${{ github.sha }} BUILT_AT=ci
+  local-integration:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with: {go-version: '1.22.x', cache: true}
+      - run: SMART_ROUTE_INTEGRATION=1 go test -race -tags=integration ./internal/integration -count=1 -timeout=3m
+  cloud-integration:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.cloud_integration }}
+    runs-on: ubuntu-latest
+    environment: cloud-integration
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with: {go-version: '1.22.x'}
+      - run: go test -tags=integration ./internal/sandbox/fly -count=1 -timeout=10m
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+          FLY_INTEGRATION_APP: ${{ vars.FLY_INTEGRATION_APP }}
+          FLY_INTEGRATION_IMAGE: ${{ vars.FLY_INTEGRATION_IMAGE }}
+          FLY_INTEGRATION_LISTEN: ${{ vars.FLY_INTEGRATION_LISTEN }}
+          FLY_INTEGRATION_CONTROL_PLANE_URL: ${{ vars.FLY_INTEGRATION_CONTROL_PLANE_URL }}

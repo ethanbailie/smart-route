@@ -1,0 +1,6 @@
+.git
+.github
+*.db
+*.db-shm
+*.db-wal
+tmp

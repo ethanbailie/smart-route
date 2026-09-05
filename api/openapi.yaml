@@ -1,0 +1,132 @@
+openapi: 3.0.3
+info:
+  title: Smart Route API
+  version: 1.0.0
+paths:
+  /v1/jobs:
+    post:
+      operationId: submitJob
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SubmitJob' }
+      responses:
+        '201': { $ref: '#/components/responses/Job' }
+        '200': { $ref: '#/components/responses/Job' }
+        '400': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+  /v1/jobs/{job_id}:
+    parameters: [{ name: job_id, in: path, required: true, schema: { type: string } }]
+    get:
+      operationId: getJob
+      responses: { '200': { $ref: '#/components/responses/Job' }, '404': { $ref: '#/components/responses/Error' } }
+  /v1/jobs/{job_id}/attempts:
+    parameters: [{ name: job_id, in: path, required: true, schema: { type: string } }]
+    get:
+      operationId: listJobAttempts
+      responses: { '200': { description: Attempt list } }
+  /v1/jobs/{job_id}/events:
+    parameters: [{ name: job_id, in: path, required: true, schema: { type: string } }]
+    get:
+      operationId: listJobEvents
+      parameters:
+        - { name: after, in: query, schema: { type: integer, format: int64, minimum: 0, default: 0 } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1 } }
+      responses: { '200': { description: Event list } }
+  /v1/jobs/{job_id}/result:
+    parameters: [{ name: job_id, in: path, required: true, schema: { type: string } }]
+    get:
+      operationId: getJobResult
+      responses: { '200': { description: Durable job result }, '404': { $ref: '#/components/responses/Error' } }
+  /v1/jobs/{job_id}/cancel:
+    parameters: [{ name: job_id, in: path, required: true, schema: { type: string } }]
+    post:
+      operationId: cancelJob
+      responses: { '200': { $ref: '#/components/responses/Job' }, '409': { $ref: '#/components/responses/Error' } }
+  /v1/workers:
+    get: { operationId: listWorkers, responses: { '200': { description: Worker list } } }
+  /v1/sandboxes:
+    get: { operationId: listSandboxes, responses: { '200': { description: Sandbox list } } }
+  /v1/sessions:
+    post:
+      operationId: createSession
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/CreateSession' } } } }
+      responses: { '201': { description: Session created }, '400': { $ref: '#/components/responses/Error' } }
+  /v1/sessions/{session_id}:
+    parameters: [{ name: session_id, in: path, required: true, schema: { type: string } }]
+    get: { operationId: getSession, responses: { '200': { description: Session and recovery status } } }
+  /v1/sessions/{session_id}/recover:
+    parameters: [{ name: session_id, in: path, required: true, schema: { type: string } }]
+    post: { operationId: recoverSession, responses: { '202': { description: Recovery requested }, '409': { $ref: '#/components/responses/Error' } } }
+  /v1/sessions/{session_id}/checkpoints:
+    parameters: [{ name: session_id, in: path, required: true, schema: { type: string } }]
+    get: { operationId: listSessionCheckpoints, responses: { '200': { description: Ordered checkpoints } } }
+    post:
+      operationId: createSessionCheckpoint
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [data], properties: { data: { type: string, format: byte } } } } } }
+      responses: { '201': { description: Durable checkpoint }, '409': { $ref: '#/components/responses/Error' } }
+  /healthz:
+    get: { operationId: health, responses: { '200': { description: Healthy } } }
+  /readyz:
+    get: { operationId: ready, responses: { '200': { description: Ready }, '503': { $ref: '#/components/responses/Error' } } }
+components:
+  responses:
+    Job:
+      description: Job envelope
+      content: { application/json: { schema: { type: object, required: [data], properties: { data: { $ref: '#/components/schemas/Job' } } } } }
+    Error:
+      description: Stable error envelope
+      content: { application/json: { schema: { type: object, required: [error], properties: { error: { type: object, required: [code, message], properties: { code: { type: string, enum: [invalid_request, duplicate_idempotency_conflict, job_not_found, unavailable_capacity, canceled_job, internal_error] }, message: { type: string } } } } } } }
+  schemas:
+    CreateSession:
+      type: object
+      additionalProperties: false
+      required: [pool]
+      properties:
+        pool: { type: string }
+        recovery_policy: { type: string, enum: [none, checkpoint, rebuild], default: none }
+        checkpoint_mode: { type: string, enum: [explicit, after_success], default: explicit }
+        rebuild_plan:
+          type: array
+          description: Ordered replay-safe steps; each requires an idempotency key.
+          items: { type: object, required: [kind, payload, idempotency_key], properties: { kind: { type: string }, payload: {}, idempotency_key: { type: string } } }
+    SubmitJob:
+      type: object
+      additionalProperties: false
+      required: [idempotency_key, kind, payload, constraints, timeout_seconds, retry]
+      properties:
+        idempotency_key: { type: string }
+        kind: { type: string }
+        payload: {}
+        constraints: { $ref: '#/components/schemas/Constraints' }
+        timeout_seconds: { type: integer, format: int64, minimum: 0, example: 300 }
+        retry: { $ref: '#/components/schemas/Retry' }
+    Constraints:
+      type: object
+      properties:
+        capabilities: { type: array, items: { type: string } }
+        labels: { type: object, additionalProperties: { type: string } }
+        upstream: { type: string, nullable: true }
+        architecture: { type: string }
+        region: { type: string }
+        executor_kind: { type: string }
+    Retry:
+      type: object
+      required: [max_attempts]
+      properties:
+        max_attempts: { type: integer, minimum: 0 }
+        backoff: { type: string }
+        max_backoff: { type: string }
+        max_elapsed: { type: string }
+    Job:
+      allOf:
+        - $ref: '#/components/schemas/SubmitJob'
+        - type: object
+          required: [id, state, created_at, updated_at]
+          properties:
+            id: { type: string }
+            state: { type: string, enum: [queued, leased, running, succeeded, failed, canceled, timed_out] }
+            timeout_at: { type: string, format: date-time }
+            created_at: { type: string, format: date-time }
+            updated_at: { type: string, format: date-time }

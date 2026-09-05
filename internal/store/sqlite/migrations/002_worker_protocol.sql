@@ -1,0 +1,10 @@
+ALTER TABLE workers ADD COLUMN session_id TEXT NOT NULL DEFAULT '';
+ALTER TABLE workers ADD COLUMN session_token_hash TEXT NOT NULL DEFAULT '';
+ALTER TABLE workers ADD COLUMN worker_version TEXT NOT NULL DEFAULT '';
+ALTER TABLE workers ADD COLUMN protocol_version TEXT NOT NULL DEFAULT '';
+ALTER TABLE workers ADD COLUMN slots INTEGER NOT NULL DEFAULT 1;
+ALTER TABLE workers ADD COLUMN active_attempts_json TEXT NOT NULL DEFAULT '[]';
+ALTER TABLE workers ADD COLUMN sandbox_metadata_json TEXT NOT NULL DEFAULT '{}';
+ALTER TABLE workers ADD COLUMN health_json TEXT NOT NULL DEFAULT '{}';
+ALTER TABLE workers ADD COLUMN upstream_status_json TEXT NOT NULL DEFAULT '{}';
+ALTER TABLE workers ADD COLUMN registered_at TIMESTAMP;

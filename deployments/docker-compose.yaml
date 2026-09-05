@@ -1,0 +1,27 @@
+services:
+  control-plane:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+      args:
+        VERSION: ${VERSION:-dev}
+        GIT_SHA: ${GIT_SHA:-unknown}
+        BUILT_AT: ${BUILT_AT:-unknown}
+    image: smart-route:${VERSION:-dev}
+    command: ["--config", "/etc/smart-route/config.yaml", "serve"]
+    user: "65532:65532"
+    read_only: true
+    tmpfs: [/tmp]
+    volumes:
+      - ./local.yaml:/etc/smart-route/config.yaml:ro
+      - smart-route-data:/var/lib/smart-route
+    ports: ["8080:8080"]
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/readyz"]
+      interval: 5s
+      timeout: 2s
+      retries: 12
+    restart: unless-stopped
+
+volumes:
+  smart-route-data: {}
