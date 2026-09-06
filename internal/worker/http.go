@@ -36,11 +36,14 @@ func NewHTTPExecutor(c HTTPConfig) *HTTPExecutor {
 		allowed[strings.ToLower(strings.TrimSpace(h))] = struct{}{}
 	}
 	if c.Client == nil {
-		c.Client = &http.Client{
-			Timeout:       30 * time.Second,
-			CheckRedirect: denyRedirects,
-		}
+		c.Client = &http.Client{Timeout: 30 * time.Second}
+	} else {
+		clone := *c.Client
+		c.Client = &clone
 	}
+	// Redirects must never bypass the host check performed below. Clone an
+	// injected client above so applying the executor policy does not mutate it.
+	c.Client.CheckRedirect = denyRedirects
 	if c.MaxRequestBytes <= 0 {
 		c.MaxRequestBytes = 1 << 20
 	}

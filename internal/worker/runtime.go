@@ -92,14 +92,24 @@ func (r *Runtime) Run(ctx context.Context) error {
 	}
 	execCtx, stopExec := context.WithCancel(context.Background())
 	defer stopExec()
+	claimCtx, stopClaims := context.WithCancel(ctx)
+	defer stopClaims()
 	heartbeatCtx, stopHeartbeat := context.WithCancel(context.Background())
 	defer stopHeartbeat()
 	errc := make(chan error, 2)
+	claimDone := make(chan struct{})
 	go func() { errc <- r.heartbeatLoop(heartbeatCtx) }()
-	go func() { errc <- r.claimLoop(ctx, execCtx) }()
+	go func() {
+		defer close(claimDone)
+		errc <- r.claimLoop(claimCtx, execCtx)
+	}()
 	select {
 	case <-ctx.Done():
 	case err = <-errc:
+	}
+	stopClaims()
+	<-claimDone
+	if err != nil {
 		stopExec()
 	}
 	if r.cfg.CancelOnShutdown {
@@ -151,9 +161,6 @@ func (r *Runtime) claimLoop(claimCtx, runCtx context.Context) error {
 			}
 		}
 		if claim == nil {
-			continue
-		}
-		if claimCtx.Err() != nil || runCtx.Err() != nil {
 			continue
 		}
 		jobCtx, cancel := context.WithCancel(runCtx)

@@ -69,6 +69,17 @@ type testExecutor struct {
 
 type unavailableControl struct{ fakeControl }
 
+type shutdownClaimControl struct {
+	fakeControl
+	claimStarted chan struct{}
+}
+
+func (f *shutdownClaimControl) Claim(ctx context.Context, _ time.Duration) (*Claim, error) {
+	close(f.claimStarted)
+	<-ctx.Done()
+	return &Claim{Job: Job{Kind: "x"}, AttemptID: "shutdown-claim"}, nil
+}
+
 type recoveryControl struct {
 	fakeControl
 	acknowledged bool
@@ -148,6 +159,54 @@ func TestRuntimeRunsClaimsConcurrentlyAndDrains(t *testing.T) {
 	}
 	if f.events[0].Data["message"] != "[REDACTED]" || string(f.results[0].Data) != "[REDACTED]" || f.results[0].Metadata["detail"] != "[REDACTED]" {
 		t.Fatal("runtime leaked a configured secret")
+	}
+}
+
+func TestHTTPExecutorDeniesRedirectsWithInjectedClient(t *testing.T) {
+	destinationHits := 0
+	destination := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { destinationHits++ }))
+	defer destination.Close()
+	redirect := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, destination.URL, http.StatusFound)
+	}))
+	defer redirect.Close()
+	redirectURL, _ := url.Parse(redirect.URL)
+	client := redirect.Client()
+	executor := NewHTTPExecutor(HTTPConfig{Client: client, AllowedHosts: []string{redirectURL.Host}})
+	result, err := executor.Execute(context.Background(), Job{Payload: json.RawMessage(`{"url":"` + redirect.URL + `"}`)}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.StatusCode != http.StatusFound || destinationHits != 0 {
+		t.Fatalf("status=%d destination hits=%d, want 302 and 0", result.StatusCode, destinationHits)
+	}
+	if client.CheckRedirect != nil {
+		t.Fatal("executor mutated injected client")
+	}
+}
+
+func TestRuntimeDrainsClaimReturnedDuringShutdown(t *testing.T) {
+	control := &shutdownClaimControl{fakeControl: fakeControl{completed: make(chan string, 1)}, claimStarted: make(chan struct{})}
+	executor := testExecutor{kind: "x", run: func(context.Context, Job, EventSink) (Result, error) { return Result{}, nil }}
+	runtime, err := New(control, Config{Executors: map[string]Executor{"x": executor}, ShutdownTimeout: time.Second})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- runtime.Run(ctx) }()
+	<-control.claimStarted
+	cancel()
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case id := <-control.completed:
+		if id != "shutdown-claim" {
+			t.Fatalf("completed claim %q", id)
+		}
+	default:
+		t.Fatal("claim returned during shutdown was abandoned")
 	}
 }
 
