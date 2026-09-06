@@ -57,7 +57,9 @@ func load() (worker.Config, worker.ControlPlane, error) {
 	secrets := secretValues()
 	executors := map[string]worker.Executor{
 		"command": worker.NewCommandExecutor(worker.CommandConfig{Allowlist: allow, MaxOutputBytes: int64(intEnv("SMART_ROUTE_MAX_OUTPUT_BYTES", 1<<20)), EmitChunks: boolEnv("SMART_ROUTE_EMIT_CHUNKS"), Secrets: secrets}),
-		"http":    worker.NewHTTPExecutor(worker.HTTPConfig{MaxResponseBytes: int64(intEnv("SMART_ROUTE_MAX_HTTP_RESPONSE_BYTES", 1<<20)), MaxRequestBytes: int64(intEnv("SMART_ROUTE_MAX_HTTP_REQUEST_BYTES", 1<<20)), AllowedHosts: listEnv("SMART_ROUTE_HTTP_ALLOWED_HOSTS"), Secrets: secrets}),
+	}
+	if httpAllowed := listEnv("SMART_ROUTE_HTTP_ALLOWED_HOSTS"); len(httpAllowed) > 0 {
+		executors["http"] = worker.NewHTTPExecutor(worker.HTTPConfig{MaxResponseBytes: int64(intEnv("SMART_ROUTE_MAX_HTTP_RESPONSE_BYTES", 1<<20)), MaxRequestBytes: int64(intEnv("SMART_ROUTE_MAX_HTTP_REQUEST_BYTES", 1<<20)), AllowedHosts: httpAllowed, Secrets: secrets})
 	}
 	executorKinds := make([]domain.ExecutorKind, 0, len(executors))
 	for kind := range executors {

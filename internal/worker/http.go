@@ -77,10 +77,8 @@ func (e *HTTPExecutor) Execute(ctx context.Context, j Job, _ EventSink) (Result,
 	if u.Scheme != "http" && u.Scheme != "https" {
 		return Result{}, &FailureError{"invalid_url", "only http and https URLs are allowed", domain.FailureNonRetryable}
 	}
-	if len(e.allowed) > 0 {
-		if _, ok := e.allowed[strings.ToLower(u.Host)]; !ok {
-			return Result{}, &FailureError{"url_not_allowed", "URL host is not in allowlist", domain.FailureNonRetryable}
-		}
+	if _, ok := e.allowed[strings.ToLower(u.Host)]; !ok {
+		return Result{}, &FailureError{"url_not_allowed", "URL host is not in allowlist", domain.FailureNonRetryable}
 	}
 	if int64(len(p.Body)) > e.maxReq {
 		return Result{}, &FailureError{"request_too_large", "HTTP request body exceeded configured size", domain.FailureNonRetryable}
