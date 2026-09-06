@@ -161,9 +161,9 @@ func (s AttemptState) Terminal() bool {
 type ExecutorKind string
 
 const (
-	ExecutorProcess   ExecutorKind = "process"
-	ExecutorContainer ExecutorKind = "container"
-	ExecutorRemote    ExecutorKind = "remote"
+	ExecutorCommand  ExecutorKind = "command"
+	ExecutorHTTP     ExecutorKind = "http"
+	ExecutorUpstream ExecutorKind = "upstream"
 )
 
 type Architecture string

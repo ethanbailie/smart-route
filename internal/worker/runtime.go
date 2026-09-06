@@ -153,6 +153,9 @@ func (r *Runtime) claimLoop(claimCtx, runCtx context.Context) error {
 		if claim == nil {
 			continue
 		}
+		if claimCtx.Err() != nil || runCtx.Err() != nil {
+			continue
+		}
 		jobCtx, cancel := context.WithCancel(runCtx)
 		if !claim.Job.Timeout.IsZero() {
 			var deadlineCancel context.CancelFunc

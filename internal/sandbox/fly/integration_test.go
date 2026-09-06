@@ -65,7 +65,7 @@ func TestLiveWorkerE2E(t *testing.T) {
 		t.Fatal(err)
 	}
 	id := domain.SandboxID(fmt.Sprintf("fly-e2e-%d", time.Now().UnixNano()))
-	caps := domain.Capabilities{Labels: map[string]string{"pool": "fly-e2e"}, Architecture: domain.ArchitectureAMD64, ExecutorKinds: []domain.ExecutorKind{domain.ExecutorProcess, domain.ExecutorRemote}}
+	caps := domain.Capabilities{Labels: map[string]string{"pool": "fly-e2e"}, Architecture: domain.ArchitectureAMD64, ExecutorKinds: []domain.ExecutorKind{domain.ExecutorCommand, domain.ExecutorHTTP}}
 	bootstrap, err := api.MintBootstrapToken(ctx, id, ProviderName, "fly-e2e", caps)
 	if err != nil {
 		t.Fatal(err)
@@ -95,7 +95,7 @@ func TestLiveWorkerE2E(t *testing.T) {
 		return false
 	})
 	payload, _ := json.Marshal(map[string]any{"command": "/bin/echo", "args": []string{"fly-e2e-ok"}, "timeout_seconds": 15})
-	job, err := local.SubmitJob(ctx, client.SubmitJob{IdempotencyKey: string(id), Kind: "command", Payload: payload, Constraints: client.Constraints{Labels: map[string]string{"pool": "fly-e2e"}, ExecutorKind: "process", PreferredSandbox: string(id)}, TimeoutSeconds: 60, Retry: client.Retry{MaxAttempts: 1}})
+	job, err := local.SubmitJob(ctx, client.SubmitJob{IdempotencyKey: string(id), Kind: "command", Payload: payload, Constraints: client.Constraints{Labels: map[string]string{"pool": "fly-e2e"}, ExecutorKind: "command", PreferredSandbox: string(id)}, TimeoutSeconds: 60, Retry: client.Retry{MaxAttempts: 1}})
 	if err != nil {
 		t.Fatal(err)
 	}

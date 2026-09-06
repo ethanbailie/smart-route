@@ -65,7 +65,7 @@ func TestDockerSQLiteChaos(t *testing.T) {
 
 	command := func(key, shell string, attempts int, preferred ...string) client.Job {
 		payload, _ := json.Marshal(map[string]any{"command": "/bin/sh", "args": []string{"-c", shell}})
-		constraints := client.Constraints{ExecutorKind: "process", Labels: map[string]string{"smart-route.pool": "chaos"}}
+		constraints := client.Constraints{ExecutorKind: "command", Labels: map[string]string{"smart-route.pool": "chaos"}}
 		if len(preferred) > 0 {
 			constraints.PreferredSandbox = preferred[0]
 		}
