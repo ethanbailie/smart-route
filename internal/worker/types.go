@@ -50,12 +50,6 @@ type OperationObserver interface {
 	Start(context.Context, string, ...any) (context.Context, func(error))
 }
 
-type UpstreamObserver interface {
-	OperationObserver
-	UpstreamCall(string, string, bool)
-	Upstream(string, string, float64)
-}
-
 type Executor interface {
 	Kind() string
 	Execute(context.Context, Job, EventSink) (Result, error)
