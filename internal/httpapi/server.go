@@ -19,6 +19,7 @@ import (
 
 	"github.com/ethanbailie/smart-route/internal/buildinfo"
 	"github.com/ethanbailie/smart-route/internal/checkpoint"
+	"github.com/ethanbailie/smart-route/internal/config"
 	"github.com/ethanbailie/smart-route/internal/domain"
 	"github.com/ethanbailie/smart-route/internal/sandbox"
 	"github.com/ethanbailie/smart-route/internal/scheduler"
@@ -41,6 +42,7 @@ type Config struct {
 	BootstrapTokenTTL, WorkerSessionTTL                                     time.Duration
 	Scheduler                                                               scheduler.Scheduler
 	ArtifactStore                                                           ArtifactStore
+	Pools                                                                   []config.Pool
 	PublicAuthToken                                                         string
 	RequireTLS, InsecureLocalMode                                           bool
 	InlineResultBytes, MaxResultBytes, MaxEvents                            int
@@ -60,6 +62,7 @@ type API struct {
 	scheduler                                                              scheduler.Scheduler
 	artifacts                                                              ArtifactStore
 	inlineResultBytes, maxResultBytes, maxEvents                           int
+	pools                                                                  map[string]struct{}
 	publicTokenHash                                                        [32]byte
 	publicAuth, requireTLS, insecureLocalMode                              bool
 	telemetry                                                              *telemetry.Telemetry
@@ -274,7 +277,11 @@ func New(s store.Store, c Config) *API {
 	if backoff <= 0 {
 		backoff = time.Second
 	}
-	api := &API{store: s, timeout: t, heartbeatInterval: heartbeat, leaseDuration: lease, workerTimeout: workerTimeout, maxClaimWait: wait, wake: make(chan struct{}, 1), scheduler: policy, artifacts: c.ArtifactStore, inlineResultBytes: inline, maxResultBytes: maxResult, maxEvents: maxEvents, bootstrapTokenTTL: bootstrapTTL, workerSessionTTL: sessionTTL, requireTLS: c.RequireTLS, insecureLocalMode: c.InsecureLocalMode, telemetry: c.Telemetry, checkpoints: c.CheckpointAdapter, checkpointTTL: c.CheckpointTTL, recoveryBackoff: backoff, providers: c.Providers}
+	pools := make(map[string]struct{}, len(c.Pools))
+	for _, p := range c.Pools {
+		pools[p.Name] = struct{}{}
+	}
+	api := &API{store: s, timeout: t, heartbeatInterval: heartbeat, leaseDuration: lease, workerTimeout: workerTimeout, maxClaimWait: wait, wake: make(chan struct{}, 1), scheduler: policy, artifacts: c.ArtifactStore, inlineResultBytes: inline, maxResultBytes: maxResult, maxEvents: maxEvents, pools: pools, bootstrapTokenTTL: bootstrapTTL, workerSessionTTL: sessionTTL, requireTLS: c.RequireTLS, insecureLocalMode: c.InsecureLocalMode, telemetry: c.Telemetry, checkpoints: c.CheckpointAdapter, checkpointTTL: c.CheckpointTTL, recoveryBackoff: backoff, providers: c.Providers}
 	if c.PublicAuthToken != "" {
 		api.publicAuth = true
 		api.publicTokenHash = sha256.Sum256([]byte(c.PublicAuthToken))
@@ -484,6 +491,12 @@ func (a *API) createSession(w http.ResponseWriter, r *http.Request) {
 	if err := d.Decode(&req); err != nil || req.Pool == "" || req.IdleTTL < 0 || req.MaxLifetime < 0 {
 		fail(w, 400, CodeInvalidRequest, "pool and non-negative lifetimes are required")
 		return
+	}
+	if len(a.pools) > 0 {
+		if _, ok := a.pools[req.Pool]; !ok {
+			fail(w, 400, CodeInvalidRequest, "unknown pool")
+			return
+		}
 	}
 	n := time.Now().UTC()
 	labels := map[string]string{}
