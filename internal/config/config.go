@@ -36,6 +36,7 @@ type Config struct {
 	Pools       []Pool              `yaml:"pools" toml:"pools" json:"pools"`
 	Secrets     Secrets             `yaml:"secrets" toml:"secrets" json:"secrets"`
 	Upstreams   map[string]Upstream `yaml:"upstreams" toml:"upstreams" json:"upstreams"`
+	Artifacts   Artifacts           `yaml:"artifacts" toml:"artifacts" json:"artifacts"`
 	Auth        Auth                `yaml:"auth" toml:"auth" json:"auth"`
 	TLS         TLS                 `yaml:"tls" toml:"tls" json:"tls"`
 	Telemetry   Telemetry           `yaml:"telemetry" toml:"telemetry" json:"telemetry"`
@@ -73,6 +74,7 @@ type Upstream struct {
 	Capabilities, Models []string
 	CredentialRef        string
 }
+type Artifacts struct{ Directory string }
 type Auth struct {
 	Token                               string
 	TokenEnv                            string
@@ -109,7 +111,7 @@ func Default() Config {
 	return Config{
 		HTTP:     HTTP{Listen: "127.0.0.1:8080", PublicURL: "http://127.0.0.1:8080", RequestTimeout: Duration(30 * time.Second), ReadTimeout: Duration(15 * time.Second), WriteTimeout: Duration(30 * time.Second), IdleTimeout: Duration(60 * time.Second), ShutdownTimeout: Duration(10 * time.Second)},
 		Database: Database{DSN: "smart-route.db"}, Jobs: Jobs{HeartbeatInterval: Duration(10 * time.Second), LeaseDuration: Duration(30 * time.Second), WorkerTimeout: Duration(30 * time.Second), MaxClaimWait: Duration(20 * time.Second), MaxEvents: 100, InlineResultBytes: 64 << 10, MaxResultBytes: 8 << 20, MaxAttempts: 3, RetryBackoff: Duration(time.Second), RetryMaxBackoff: Duration(time.Minute)},
-		Providers: map[string]Provider{}, Secrets: Secrets{Environment: map[string]map[string]string{}}, Upstreams: map[string]Upstream{},
+		Providers: map[string]Provider{}, Secrets: Secrets{Environment: map[string]map[string]string{}}, Upstreams: map[string]Upstream{}, Artifacts: Artifacts{Directory: "artifacts"},
 		Auth: Auth{BootstrapTokenTTL: Duration(5 * time.Minute), WorkerSessionTTL: Duration(5 * time.Minute)}, Controllers: Controllers{LeaseReaper: Duration(5 * time.Second), JobTimeouts: Duration(5 * time.Second), SessionExpiry: Duration(5 * time.Second), WorkerHealth: Duration(10 * time.Second), Reconciler: Duration(30 * time.Second), Reaper: Duration(30 * time.Second), Autoscaler: Duration(10 * time.Second), WorkerSuspectAfter: Duration(30 * time.Second), WorkerDeadAfter: Duration(time.Minute), DrainGrace: Duration(30 * time.Second), Orphans: "terminate", ProviderBackoffBase: Duration(time.Second), ProviderBackoffMax: Duration(time.Minute)}, Recovery: Recovery{CheckpointDirectory: "checkpoints", Strategy: "application", CheckpointTTL: Duration(24 * time.Hour), Interval: Duration(5 * time.Second), BackoffBase: Duration(time.Second), BackoffMax: Duration(time.Minute), MaxAttempts: 5, RetainLatest: 3},
 	}
 }
