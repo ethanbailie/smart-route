@@ -108,7 +108,9 @@ func TestWorkerProtocolLifecycle(t *testing.T) {
 		t.Fatalf("heartbeat status = %d", heartbeat.StatusCode)
 	}
 	heartbeatData := responseData(t, heartbeat)
-	token = heartbeatData["session_token"].(string)
+	if tok, ok := heartbeatData["session_token"].(string); ok {
+		token = tok
+	}
 	for action, step := range map[string]struct {
 		body string
 		want int
