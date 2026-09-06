@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ethan/smart-route/internal/domain"
-	"github.com/ethan/smart-route/internal/store"
+	"github.com/ethanbailie/smart-route/internal/domain"
+	"github.com/ethanbailie/smart-route/internal/store"
 )
 
 func fixture(t *testing.T) (*DB, string, domain.Worker, domain.Sandbox, domain.Job) {

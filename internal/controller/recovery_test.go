@@ -8,12 +8,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ethan/smart-route/internal/checkpoint"
-	"github.com/ethan/smart-route/internal/controller"
-	"github.com/ethan/smart-route/internal/domain"
-	"github.com/ethan/smart-route/internal/sandbox"
-	"github.com/ethan/smart-route/internal/store"
-	"github.com/ethan/smart-route/internal/store/sqlite"
+	"github.com/ethanbailie/smart-route/internal/checkpoint"
+	"github.com/ethanbailie/smart-route/internal/controller"
+	"github.com/ethanbailie/smart-route/internal/domain"
+	"github.com/ethanbailie/smart-route/internal/sandbox"
+	"github.com/ethanbailie/smart-route/internal/store"
+	"github.com/ethanbailie/smart-route/internal/store/sqlite"
 )
 
 type recoveryProvider struct {

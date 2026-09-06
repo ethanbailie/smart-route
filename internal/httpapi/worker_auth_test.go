@@ -11,8 +11,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ethan/smart-route/internal/domain"
-	"github.com/ethan/smart-route/internal/store/sqlite"
+	"github.com/ethanbailie/smart-route/internal/domain"
+	"github.com/ethanbailie/smart-route/internal/store/sqlite"
 )
 
 func TestBootstrapCredentialBindingsAndExpiry(t *testing.T) {

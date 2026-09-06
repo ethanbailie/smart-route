@@ -8,9 +8,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ethan/smart-route/internal/domain"
-	"github.com/ethan/smart-route/internal/secret"
-	"github.com/ethan/smart-route/internal/upstream"
+	"github.com/ethanbailie/smart-route/internal/domain"
+	"github.com/ethanbailie/smart-route/internal/secret"
+	"github.com/ethanbailie/smart-route/internal/upstream"
 )
 
 type countingSecrets struct {

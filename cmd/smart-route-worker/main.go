@@ -15,9 +15,9 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/ethan/smart-route/internal/buildinfo"
-	"github.com/ethan/smart-route/internal/domain"
-	"github.com/ethan/smart-route/internal/worker"
+	"github.com/ethanbailie/smart-route/internal/buildinfo"
+	"github.com/ethanbailie/smart-route/internal/domain"
+	"github.com/ethanbailie/smart-route/internal/worker"
 )
 
 func main() {

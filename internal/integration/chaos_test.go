@@ -19,13 +19,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ethan/smart-route/internal/controller"
-	"github.com/ethan/smart-route/internal/domain"
-	"github.com/ethan/smart-route/internal/sandbox"
-	"github.com/ethan/smart-route/internal/sandbox/fake"
-	"github.com/ethan/smart-route/internal/store"
-	"github.com/ethan/smart-route/internal/store/sqlite"
-	"github.com/ethan/smart-route/pkg/client"
+	"github.com/ethanbailie/smart-route/internal/controller"
+	"github.com/ethanbailie/smart-route/internal/domain"
+	"github.com/ethanbailie/smart-route/internal/sandbox"
+	"github.com/ethanbailie/smart-route/internal/sandbox/fake"
+	"github.com/ethanbailie/smart-route/internal/store"
+	"github.com/ethanbailie/smart-route/internal/store/sqlite"
+	"github.com/ethanbailie/smart-route/pkg/client"
 )
 
 // TestDockerSQLiteChaos exercises the control plane as a child process and

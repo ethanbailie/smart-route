@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ethan/smart-route/internal/secret"
+	"github.com/ethanbailie/smart-route/internal/secret"
 )
 
 func TestRegistrySelectionCooldownAndFakeOutcomes(t *testing.T) {

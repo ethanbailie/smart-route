@@ -11,11 +11,11 @@ import (
 	"os"
 	"time"
 
-	"github.com/ethan/smart-route/internal/app"
-	"github.com/ethan/smart-route/internal/buildinfo"
-	"github.com/ethan/smart-route/internal/config"
-	"github.com/ethan/smart-route/internal/store/sqlite"
-	"github.com/ethan/smart-route/pkg/client"
+	"github.com/ethanbailie/smart-route/internal/app"
+	"github.com/ethanbailie/smart-route/internal/buildinfo"
+	"github.com/ethanbailie/smart-route/internal/config"
+	"github.com/ethanbailie/smart-route/internal/store/sqlite"
+	"github.com/ethanbailie/smart-route/pkg/client"
 )
 
 func main() {

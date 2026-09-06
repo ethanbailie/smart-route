@@ -17,13 +17,13 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ethan/smart-route/internal/buildinfo"
-	"github.com/ethan/smart-route/internal/checkpoint"
-	"github.com/ethan/smart-route/internal/domain"
-	"github.com/ethan/smart-route/internal/sandbox"
-	"github.com/ethan/smart-route/internal/scheduler"
-	"github.com/ethan/smart-route/internal/store"
-	"github.com/ethan/smart-route/internal/telemetry"
+	"github.com/ethanbailie/smart-route/internal/buildinfo"
+	"github.com/ethanbailie/smart-route/internal/checkpoint"
+	"github.com/ethanbailie/smart-route/internal/domain"
+	"github.com/ethanbailie/smart-route/internal/sandbox"
+	"github.com/ethanbailie/smart-route/internal/scheduler"
+	"github.com/ethanbailie/smart-route/internal/store"
+	"github.com/ethanbailie/smart-route/internal/telemetry"
 )
 
 const (

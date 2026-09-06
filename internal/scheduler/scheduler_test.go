@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ethan/smart-route/internal/domain"
+	"github.com/ethanbailie/smart-route/internal/domain"
 )
 
 func TestPolicyEligibilityAndRanking(t *testing.T) {

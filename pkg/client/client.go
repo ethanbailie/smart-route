@@ -13,8 +13,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ethan/smart-route/internal/domain"
-	"github.com/ethan/smart-route/internal/httpapi"
+	"github.com/ethanbailie/smart-route/internal/domain"
+	"github.com/ethanbailie/smart-route/internal/httpapi"
 )
 
 type SubmitJob = httpapi.SubmitJob

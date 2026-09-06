@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ethan/smart-route/internal/controller"
-	"github.com/ethan/smart-route/internal/telemetry"
+	"github.com/ethanbailie/smart-route/internal/controller"
+	"github.com/ethanbailie/smart-route/internal/telemetry"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/testutil"
 )

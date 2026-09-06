@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ethan/smart-route/internal/config"
+	"github.com/ethanbailie/smart-route/internal/config"
 )
 
 func TestRunShutsDownAndClosesDatabase(t *testing.T) {

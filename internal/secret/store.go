@@ -9,7 +9,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/ethan/smart-route/internal/domain"
+	"github.com/ethanbailie/smart-route/internal/domain"
 )
 
 var ErrNotFound = errors.New("secret: credential reference not found")

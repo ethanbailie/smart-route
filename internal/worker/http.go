@@ -9,7 +9,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/ethan/smart-route/internal/domain"
+	"github.com/ethanbailie/smart-route/internal/domain"
 )
 
 type HTTPConfig struct {

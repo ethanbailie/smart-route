@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/ethan/smart-route/internal/domain"
+	"github.com/ethanbailie/smart-route/internal/domain"
 )
 
 type Config struct {

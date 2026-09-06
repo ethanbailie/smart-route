@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/ethan/smart-route/internal/secret"
+	"github.com/ethanbailie/smart-route/internal/secret"
 )
 
 type FakeOutcome string

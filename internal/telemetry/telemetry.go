@@ -10,8 +10,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/ethan/smart-route/internal/controller"
-	"github.com/ethan/smart-route/internal/scheduler"
+	"github.com/ethanbailie/smart-route/internal/controller"
+	"github.com/ethanbailie/smart-route/internal/scheduler"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"

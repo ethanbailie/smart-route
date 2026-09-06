@@ -12,7 +12,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/ethan/smart-route/internal/checkpoint"
+	"github.com/ethanbailie/smart-route/internal/checkpoint"
 )
 
 // FilesystemCheckpoint exports configured application state roots. It excludes
