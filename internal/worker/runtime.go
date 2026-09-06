@@ -348,7 +348,8 @@ func redactResult(result Result, secrets []string) Result {
 	return result
 }
 func classify(err error, ctx context.Context) *FailureError {
-	if fe, ok := err.(*FailureError); ok {
+	var fe *FailureError
+	if errors.As(err, &fe) {
 		return fe
 	}
 	if errors.Is(err, ErrTimeout) || errors.Is(ctx.Err(), context.DeadlineExceeded) {

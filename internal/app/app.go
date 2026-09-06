@@ -76,7 +76,9 @@ func Build(c config.Config) (*Application, error) {
 	timeouts := controller.NewJobTimeouts(db, nil)
 	add(func(ctx context.Context) error { return timeouts.Start(ctx, time.Duration(c.Controllers.JobTimeouts)) })
 	sessions := controller.NewSessionExpiry(db, nil)
-	add(func(ctx context.Context) error { return sessions.Start(ctx, time.Duration(c.Controllers.JobTimeouts)) })
+	add(func(ctx context.Context) error {
+		return sessions.Start(ctx, time.Duration(c.Controllers.SessionExpiry))
+	})
 	health := controller.NewWorkerHealth(db, controller.WorkerHealthConfig{SuspectAfter: time.Duration(c.Controllers.WorkerSuspectAfter), DeadAfter: time.Duration(c.Controllers.WorkerDeadAfter)}, nil)
 	add(func(ctx context.Context) error { return health.Start(ctx, time.Duration(c.Controllers.WorkerHealth)) })
 	reconcile := controller.NewSandboxReconciler(db, registry, controller.ReconcileConfig{OwnerLabel: c.Controllers.OwnerLabel, OwnerValue: c.Controllers.OwnerValue, Orphans: controller.OrphanPolicy(c.Controllers.Orphans), MaxLifetime: time.Duration(c.Controllers.MaxLifetime), DrainGrace: time.Duration(c.Controllers.DrainGrace)}, nil)
