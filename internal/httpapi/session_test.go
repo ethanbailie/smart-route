@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/ethanbailie/smart-route/internal/checkpoint"
+	"github.com/ethanbailie/smart-route/internal/config"
 	"github.com/ethanbailie/smart-route/internal/domain"
 	"github.com/ethanbailie/smart-route/internal/httpapi"
 	"github.com/ethanbailie/smart-route/internal/sandbox"
@@ -23,7 +24,7 @@ func TestSessionClientLifecycle(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer db.Close()
-	server := httptest.NewServer(httpapi.New(db, httpapi.Config{CheckpointAdapter: checkpoint.Filesystem{Root: t.TempDir()}, CheckpointTTL: time.Hour}).Handler())
+	server := httptest.NewServer(httpapi.New(db, httpapi.Config{Pools: []config.Pool{{Name: "agent"}}, CheckpointAdapter: checkpoint.Filesystem{Root: t.TempDir()}, CheckpointTTL: time.Hour}).Handler())
 	defer server.Close()
 	c, err := client.New(server.URL, server.Client())
 	if err != nil {
@@ -87,7 +88,7 @@ func TestExplicitProviderCheckpointUsesNativeSnapshot(t *testing.T) {
 		t.Fatal(err)
 	}
 	adapter := checkpoint.ProviderSnapshot{Backing: checkpoint.Filesystem{Root: t.TempDir()}}
-	server := httptest.NewServer(httpapi.New(db, httpapi.Config{CheckpointAdapter: adapter, Providers: registry}).Handler())
+	server := httptest.NewServer(httpapi.New(db, httpapi.Config{Pools: []config.Pool{{Name: "agent"}}, CheckpointAdapter: adapter, Providers: registry}).Handler())
 	defer server.Close()
 	apiClient, err := client.New(server.URL, server.Client())
 	if err != nil {

@@ -492,11 +492,9 @@ func (a *API) createSession(w http.ResponseWriter, r *http.Request) {
 		fail(w, 400, CodeInvalidRequest, "pool and non-negative lifetimes are required")
 		return
 	}
-	if len(a.pools) > 0 {
-		if _, ok := a.pools[req.Pool]; !ok {
-			fail(w, 400, CodeInvalidRequest, "unknown pool")
-			return
-		}
+	if _, ok := a.pools[req.Pool]; !ok {
+		fail(w, 400, CodeInvalidRequest, "unknown pool")
+		return
 	}
 	n := time.Now().UTC()
 	labels := map[string]string{}
