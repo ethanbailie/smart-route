@@ -93,7 +93,7 @@ func Build(c config.Config) (*Application, error) {
 	add(func(ctx context.Context) error { return reaper.Start(ctx, time.Duration(c.Controllers.Reaper)) })
 	pools := make([]controller.SandboxPool, 0, len(c.Pools))
 	for _, p := range c.Pools {
-		caps := domain.Capabilities{Capabilities: append([]string(nil), p.Capabilities...), Labels: p.Labels, Architecture: domain.Architecture(p.Architecture), Region: p.Region, Upstreams: append([]string(nil), p.Upstreams...), ExecutorKinds: executorKinds(p.ExecutorKinds)}
+		caps := domain.Capabilities{Capabilities: append([]string(nil), p.Capabilities...), Labels: p.Labels, Architecture: domain.Architecture(p.Architecture), Region: p.Region, ExecutorKinds: executorKinds(p.ExecutorKinds)}
 		env := map[string]domain.CredentialRefID{}
 		for k, v := range p.Environment {
 			env[k] = domain.CredentialRefID(v)
