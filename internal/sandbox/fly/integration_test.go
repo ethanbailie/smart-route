@@ -65,7 +65,7 @@ func TestLiveWorkerE2E(t *testing.T) {
 		t.Fatal(err)
 	}
 	id := domain.SandboxID(fmt.Sprintf("fly-e2e-%d", time.Now().UnixNano()))
-	caps := domain.Capabilities{Labels: map[string]string{"pool": "fly-e2e"}, Architecture: domain.ArchitectureAMD64, ExecutorKinds: []domain.ExecutorKind{domain.ExecutorCommand, domain.ExecutorHTTP}}
+	caps := domain.Capabilities{Labels: map[string]string{"pool": "fly-e2e"}, Architecture: domain.ArchitectureAMD64, ExecutorKinds: []domain.ExecutorKind{domain.ExecutorCommand}}
 	bootstrap, err := api.MintBootstrapToken(ctx, id, ProviderName, "fly-e2e", caps)
 	if err != nil {
 		t.Fatal(err)

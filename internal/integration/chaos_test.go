@@ -500,7 +500,7 @@ pools:
     provider: docker
     image: %s
     capabilities: [shell]
-    executor_kinds: [command, http]
+    executor_kinds: [command]
     architecture: amd64
     labels: {chaos-owner: "1"}
     min_replicas: 4
