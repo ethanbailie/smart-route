@@ -4,12 +4,14 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"github.com/ethanbailie/smart-route/internal/domain"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/ethanbailie/smart-route/internal/domain"
 )
 
 type fakeControl struct {
@@ -160,7 +162,8 @@ func TestExecutorsEnforceBoundsAndRedact(t *testing.T) {
 	}
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write([]byte("too large")) }))
 	defer server.Close()
-	httpExecutor := NewHTTPExecutor(HTTPConfig{MaxResponseBytes: 3})
+	serverURL, _ := url.Parse(server.URL)
+	httpExecutor := NewHTTPExecutor(HTTPConfig{MaxResponseBytes: 3, AllowedHosts: []string{serverURL.Host}})
 	if _, err = httpExecutor.Execute(context.Background(), Job{Payload: json.RawMessage(`{"url":"` + server.URL + `"}`)}, nil); err == nil {
 		t.Fatal("expected bounded response error")
 	}

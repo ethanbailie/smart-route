@@ -56,7 +56,7 @@ func load() (worker.Config, worker.ControlPlane, error) {
 	secrets := secretValues()
 	executors := map[string]worker.Executor{
 		"command": worker.NewCommandExecutor(worker.CommandConfig{Allowlist: allow, MaxOutputBytes: int64(intEnv("SMART_ROUTE_MAX_OUTPUT_BYTES", 1<<20)), EmitChunks: boolEnv("SMART_ROUTE_EMIT_CHUNKS"), Secrets: secrets}),
-		"http":    worker.NewHTTPExecutor(worker.HTTPConfig{MaxResponseBytes: int64(intEnv("SMART_ROUTE_MAX_HTTP_RESPONSE_BYTES", 1<<20))}),
+		"http":    worker.NewHTTPExecutor(worker.HTTPConfig{MaxResponseBytes: int64(intEnv("SMART_ROUTE_MAX_HTTP_RESPONSE_BYTES", 1<<20)), MaxRequestBytes: int64(intEnv("SMART_ROUTE_MAX_HTTP_REQUEST_BYTES", 1<<20)), AllowedHosts: listEnv("SMART_ROUTE_HTTP_ALLOWED_HOSTS"), Secrets: secrets}),
 	}
 	caps := domain.Capabilities{Capabilities: capabilities, Labels: labels, Architecture: domain.Architecture(runtime.GOARCH), Region: os.Getenv("SMART_ROUTE_REGION"), ExecutorKinds: []domain.ExecutorKind{domain.ExecutorProcess, domain.ExecutorRemote}, Upstreams: upstreams}
 	registration := worker.RegistrationRequest{BootstrapToken: os.Getenv("SMART_ROUTE_BOOTSTRAP_TOKEN"), InstanceID: instanceID(), SandboxID: envDefault("SMART_ROUTE_SANDBOX_ID", hostname()), SandboxProvider: envDefault("SMART_ROUTE_SANDBOX_PROVIDER", "standalone"), Version: buildinfo.Version, Capabilities: caps, MaxConcurrency: max, SandboxMetadata: map[string]string{"runtime": "worker", "hostname": hostname(), "git_sha": buildinfo.GitSHA, "protocol_version": buildinfo.ProtocolVersion}}
