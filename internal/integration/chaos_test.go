@@ -479,7 +479,6 @@ database:
 jobs:
   heartbeat_interval: 1s
   lease_duration: 6s
-  worker_timeout: 3s
   max_claim_wait: 200ms
   max_events: 100
   inline_result_bytes: 65536
