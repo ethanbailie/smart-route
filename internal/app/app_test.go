@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ethan/smart-route/internal/config"
+	"github.com/ethanbailie/smart-route/internal/config"
 )
 
 func TestRunShutsDownAndClosesDatabase(t *testing.T) {
@@ -43,11 +43,13 @@ func TestRunShutsDownAndClosesDatabase(t *testing.T) {
 		t.Fatal("database remained open")
 	}
 }
-func TestDoctorRejectsMissingReferencesWithoutJobs(t *testing.T) {
+func TestDoctorRejectsMissingSecretReference(t *testing.T) {
 	c := config.Default()
 	c.Database.DSN = filepath.Join(t.TempDir(), "route.db")
-	c.Upstreams = map[string]config.Upstream{"llm": {Enabled: true, CredentialRef: "missing"}}
+	c.Providers = map[string]config.Provider{"local": {Type: "localdocker"}}
+	c.Pools = []config.Pool{{Name: "default", Provider: "local", ExecutorKinds: []string{"command"}, Environment: map[string]string{"TOKEN": "missing"}}}
+	c.Secrets.Environment = map[string]map[string]string{}
 	if e := Doctor(context.Background(), c); e == nil {
-		t.Fatal("doctor accepted a missing credential reference")
+		t.Fatal("doctor accepted a missing secret reference")
 	}
 }

@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ethan/smart-route/internal/sandbox"
-	"github.com/ethan/smart-route/internal/sandbox/providertest"
+	"github.com/ethanbailie/smart-route/internal/sandbox"
+	"github.com/ethanbailie/smart-route/internal/sandbox/providertest"
 )
 
 func TestProviderContract(t *testing.T) {

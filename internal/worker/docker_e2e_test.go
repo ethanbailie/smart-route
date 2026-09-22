@@ -12,9 +12,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ethan/smart-route/internal/httpapi"
-	"github.com/ethan/smart-route/internal/store/sqlite"
-	"github.com/ethan/smart-route/pkg/client"
+	"github.com/ethanbailie/smart-route/internal/httpapi"
+	"github.com/ethanbailie/smart-route/internal/store/sqlite"
+	"github.com/ethanbailie/smart-route/pkg/client"
 )
 
 func TestDockerWorkerE2E(t *testing.T) {
@@ -61,7 +61,7 @@ func TestDockerWorkerE2E(t *testing.T) {
 		time.Sleep(100 * time.Millisecond)
 	}
 	payload, _ := json.Marshal(map[string]any{"command": "/bin/echo", "args": []string{"docker-e2e"}})
-	job, err := api.SubmitJob(context.Background(), client.SubmitJob{IdempotencyKey: name, Kind: "command", Payload: payload, Constraints: client.Constraints{ExecutorKind: "process"}, TimeoutSeconds: 10})
+	job, err := api.SubmitJob(context.Background(), client.SubmitJob{IdempotencyKey: name, Kind: "command", Payload: payload, Constraints: client.Constraints{ExecutorKind: "command"}, TimeoutSeconds: 10})
 	if err != nil {
 		t.Fatal(err)
 	}

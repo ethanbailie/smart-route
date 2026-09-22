@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/ethan/smart-route/internal/domain"
+	"github.com/ethanbailie/smart-route/internal/domain"
 )
 
 type Config struct {
@@ -92,14 +92,24 @@ func (r *Runtime) Run(ctx context.Context) error {
 	}
 	execCtx, stopExec := context.WithCancel(context.Background())
 	defer stopExec()
+	claimCtx, stopClaims := context.WithCancel(ctx)
+	defer stopClaims()
 	heartbeatCtx, stopHeartbeat := context.WithCancel(context.Background())
 	defer stopHeartbeat()
 	errc := make(chan error, 2)
+	claimDone := make(chan struct{})
 	go func() { errc <- r.heartbeatLoop(heartbeatCtx) }()
-	go func() { errc <- r.claimLoop(ctx, execCtx) }()
+	go func() {
+		defer close(claimDone)
+		errc <- r.claimLoop(claimCtx, execCtx)
+	}()
 	select {
 	case <-ctx.Done():
 	case err = <-errc:
+	}
+	stopClaims()
+	<-claimDone
+	if err != nil {
 		stopExec()
 	}
 	if r.cfg.CancelOnShutdown {
@@ -348,7 +358,8 @@ func redactResult(result Result, secrets []string) Result {
 	return result
 }
 func classify(err error, ctx context.Context) *FailureError {
-	if fe, ok := err.(*FailureError); ok {
+	var fe *FailureError
+	if errors.As(err, &fe) {
 		return fe
 	}
 	if errors.Is(err, ErrTimeout) || errors.Is(ctx.Err(), context.DeadlineExceeded) {

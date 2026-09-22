@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ethan/smart-route/internal/domain"
+	"github.com/ethanbailie/smart-route/internal/domain"
 )
 
 func TestPolicyEligibilityAndRanking(t *testing.T) {
@@ -12,17 +12,17 @@ func TestPolicyEligibilityAndRanking(t *testing.T) {
 	budget := 0.0
 	base := Request{
 		Now:     now,
-		Worker:  domain.Worker{ID: "worker", SandboxID: "sandbox", SandboxProvider: "docker", MaxConcurrency: 2, AvailableSlots: 2, Health: map[string]string{"status": "healthy"}, Capabilities: domain.Capabilities{Capabilities: []string{"build"}, Labels: map[string]string{"pool": "main"}, Architecture: domain.ArchitectureAMD64, Region: "west", ExecutorKinds: []domain.ExecutorKind{domain.ExecutorContainer}, Upstreams: []string{"origin"}}, UpstreamStatus: map[string]domain.UpstreamState{"origin": {State: domain.UpstreamAvailable, Health: 1}}},
-		Sandbox: domain.Sandbox{ID: "sandbox", WorkerID: "worker", State: "ready", Capabilities: domain.Capabilities{Capabilities: []string{"build"}, Labels: map[string]string{"pool": "main"}, Architecture: domain.ArchitectureAMD64, Region: "west", ExecutorKinds: []domain.ExecutorKind{domain.ExecutorContainer}, Upstreams: []string{"origin"}}},
+		Worker:  domain.Worker{ID: "worker", SandboxID: "sandbox", SandboxProvider: "docker", MaxConcurrency: 2, AvailableSlots: 2, Health: map[string]string{"status": "healthy"}, Capabilities: domain.Capabilities{Capabilities: []string{"build"}, Labels: map[string]string{"pool": "main"}, Architecture: domain.ArchitectureAMD64, Region: "west", ExecutorKinds: []domain.ExecutorKind{domain.ExecutorCommand}, Upstreams: []string{"origin"}}, UpstreamStatus: map[string]domain.UpstreamState{"origin": {State: domain.UpstreamAvailable, Health: 1}}},
+		Sandbox: domain.Sandbox{ID: "sandbox", WorkerID: "worker", State: "ready", Capabilities: domain.Capabilities{Capabilities: []string{"build"}, Labels: map[string]string{"pool": "main"}, Architecture: domain.ArchitectureAMD64, Region: "west", ExecutorKinds: []domain.ExecutorKind{domain.ExecutorCommand}, Upstreams: []string{"origin"}}},
 	}
-	constraint := domain.RoutingConstraints{Capabilities: []string{"build"}, Labels: map[string]string{"pool": "main"}, Architecture: domain.ArchitectureAMD64, Region: "west", ExecutorKind: domain.ExecutorContainer, RequiredUpstream: "origin"}
+	constraint := domain.RoutingConstraints{Capabilities: []string{"build"}, Labels: map[string]string{"pool": "main"}, Architecture: domain.ArchitectureAMD64, Region: "west", ExecutorKind: domain.ExecutorCommand, RequiredUpstream: "origin"}
 	tests := []struct {
 		name   string
 		mutate func(*Request, *domain.RoutingConstraints)
 		want   ReasonCode
 	}{
 		{"capability", func(_ *Request, c *domain.RoutingConstraints) { c.Capabilities = []string{"gpu"} }, ReasonCapability},
-		{"executor", func(_ *Request, c *domain.RoutingConstraints) { c.ExecutorKind = domain.ExecutorProcess }, ReasonExecutor},
+		{"executor", func(_ *Request, c *domain.RoutingConstraints) { c.ExecutorKind = domain.ExecutorHTTP }, ReasonExecutor},
 		{"labels", func(_ *Request, c *domain.RoutingConstraints) { c.Labels["pool"] = "other" }, ReasonLabels},
 		{"architecture", func(_ *Request, c *domain.RoutingConstraints) { c.Architecture = domain.ArchitectureARM64 }, ReasonArchitecture},
 		{"region", func(_ *Request, c *domain.RoutingConstraints) { c.Region = "east" }, ReasonRegion},

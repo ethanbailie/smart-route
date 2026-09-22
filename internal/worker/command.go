@@ -14,7 +14,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/ethan/smart-route/internal/domain"
+	"github.com/ethanbailie/smart-route/internal/domain"
 )
 
 type CommandConfig struct {
@@ -22,12 +22,15 @@ type CommandConfig struct {
 	MaxOutputBytes int64
 	EmitChunks     bool
 	Secrets        []string
+	ResolveSecret  func(ref string) (string, bool)
 }
+
 type CommandExecutor struct {
 	allowed map[string]struct{}
 	max     int64
 	chunks  bool
 	secrets []string
+	resolve func(ref string) (string, bool)
 }
 
 func NewCommandExecutor(c CommandConfig) *CommandExecutor {
@@ -38,8 +41,12 @@ func NewCommandExecutor(c CommandConfig) *CommandExecutor {
 	if c.MaxOutputBytes <= 0 {
 		c.MaxOutputBytes = 1 << 20
 	}
-	return &CommandExecutor{m, c.MaxOutputBytes, c.EmitChunks, c.Secrets}
+	if c.ResolveSecret == nil {
+		c.ResolveSecret = defaultResolveSecret
+	}
+	return &CommandExecutor{m, c.MaxOutputBytes, c.EmitChunks, c.Secrets, c.ResolveSecret}
 }
+
 func (*CommandExecutor) Kind() string { return "command" }
 
 type commandPayload struct {
@@ -65,11 +72,12 @@ func (e *CommandExecutor) Execute(ctx context.Context, j Job, sink EventSink) (R
 		ctx, cancel = context.WithTimeout(ctx, time.Duration(p.TimeoutSeconds)*time.Second)
 		defer cancel()
 	}
-	cmd := exec.Command(p.Command, p.Args...)
-	cmd.Env = os.Environ()
-	for k, v := range p.Env {
-		cmd.Env = append(cmd.Env, k+"="+v)
+	env, err := e.buildEnv(p.Env)
+	if err != nil {
+		return Result{}, &FailureError{"secret_error", err.Error(), domain.FailureNonRetryable}
 	}
+	cmd := exec.Command(p.Command, p.Args...)
+	cmd.Env = env
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	out := newBoundedBuffer(e.max)
 	stderr := newBoundedBuffer(e.max)
@@ -99,6 +107,72 @@ func (e *CommandExecutor) Execute(ctx context.Context, j Job, sink EventSink) (R
 		return Result{}, ErrCanceled
 	}
 	return Result{Data: []byte(redact(out.String(), e.secrets)), Metadata: map[string]string{"stderr": redact(stderr.String(), e.secrets), "stdout_truncated": strconv.FormatBool(out.truncated), "stderr_truncated": strconv.FormatBool(stderr.truncated)}}, nil
+}
+
+func (e *CommandExecutor) buildEnv(payload map[string]string) ([]string, error) {
+	env := make(map[string]string)
+	for _, entry := range os.Environ() {
+		parts := strings.SplitN(entry, "=", 2)
+		if len(parts) != 2 {
+			continue
+		}
+		key := parts[0]
+		if isBaseEnvVar(key) {
+			env[key] = parts[1]
+		}
+	}
+	for k, v := range payload {
+		if !isSensitiveKey(k) {
+			env[k] = v
+		}
+	}
+	for _, entry := range os.Environ() {
+		parts := strings.SplitN(entry, "=", 2)
+		if len(parts) != 2 {
+			continue
+		}
+		key, ref := parts[0], parts[1]
+		const prefix = "SMART_ROUTE_ENV_REF_"
+		if !strings.HasPrefix(key, prefix) {
+			continue
+		}
+		name := strings.TrimPrefix(key, prefix)
+		if ref == "" {
+			continue
+		}
+		value, ok := e.resolve(ref)
+		if !ok {
+			return nil, fmt.Errorf("secret reference %q not found for %s", ref, name)
+		}
+		env[name] = value
+	}
+	out := make([]string, 0, len(env))
+	for k, v := range env {
+		out = append(out, k+"="+v)
+	}
+	return out, nil
+}
+
+func isBaseEnvVar(key string) bool {
+	switch strings.ToUpper(key) {
+	case "PATH", "HOME", "USER", "SHELL", "LANG", "TERM", "TZ", "TMPDIR":
+		return true
+	}
+	return strings.HasPrefix(key, "LC_")
+}
+
+func isSensitiveKey(key string) bool {
+	return strings.HasPrefix(key, "SMART_ROUTE_SECRET_") || strings.HasPrefix(key, "SMART_ROUTE_CREDENTIAL_") || strings.HasPrefix(key, "SMART_ROUTE_ENV_REF_")
+}
+
+func defaultResolveSecret(ref string) (string, bool) {
+	if v, ok := os.LookupEnv("SMART_ROUTE_SECRET_" + ref); ok {
+		return v, true
+	}
+	if v, ok := os.LookupEnv("SMART_ROUTE_CREDENTIAL_" + ref); ok {
+		return v, true
+	}
+	return "", false
 }
 
 type boundedBuffer struct {

@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ethan/smart-route/internal/domain"
-	"github.com/ethan/smart-route/internal/store/sqlite"
+	"github.com/ethanbailie/smart-route/internal/domain"
+	"github.com/ethanbailie/smart-route/internal/store/sqlite"
 )
 
 func workerRequest(t *testing.T, client *http.Client, method, url, worker, token, body string) *http.Response {
@@ -108,7 +108,9 @@ func TestWorkerProtocolLifecycle(t *testing.T) {
 		t.Fatalf("heartbeat status = %d", heartbeat.StatusCode)
 	}
 	heartbeatData := responseData(t, heartbeat)
-	token = heartbeatData["session_token"].(string)
+	if tok, ok := heartbeatData["session_token"].(string); ok {
+		token = tok
+	}
 	for action, step := range map[string]struct {
 		body string
 		want int

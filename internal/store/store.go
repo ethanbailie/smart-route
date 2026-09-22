@@ -6,8 +6,8 @@ import (
 	"errors"
 	"time"
 
-	"github.com/ethan/smart-route/internal/domain"
-	"github.com/ethan/smart-route/internal/scheduler"
+	"github.com/ethanbailie/smart-route/internal/domain"
+	"github.com/ethanbailie/smart-route/internal/scheduler"
 )
 
 var (

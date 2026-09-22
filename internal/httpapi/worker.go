@@ -13,9 +13,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ethan/smart-route/internal/checkpoint"
-	"github.com/ethan/smart-route/internal/domain"
-	"github.com/ethan/smart-route/internal/store"
+	"github.com/ethanbailie/smart-route/internal/checkpoint"
+	"github.com/ethanbailie/smart-route/internal/domain"
+	"github.com/ethanbailie/smart-route/internal/store"
 )
 
 const workerProtocolVersion = "1"
@@ -311,10 +311,6 @@ func (a *API) heartbeatWorker(w http.ResponseWriter, r *http.Request) {
 		worker.AvailableSlots = worker.MaxConcurrency
 	}
 	worker.LastSeenAt = time.Now().UTC()
-	rotated := newID("wst")
-	rotatedHash := sha256.Sum256([]byte(rotated))
-	worker.SessionTokenHash = hex.EncodeToString(rotatedHash[:])
-	worker.SessionID = newID("session")
 	worker.SessionExpiresAt = worker.LastSeenAt.Add(a.workerSessionTTL)
 	if err := a.store.UpsertWorker(r.Context(), worker); err != nil {
 		internal(w)
@@ -324,7 +320,7 @@ func (a *API) heartbeatWorker(w http.ResponseWriter, r *http.Request) {
 	if a.telemetry != nil {
 		a.telemetry.HeartbeatAge(0)
 	}
-	write(w, http.StatusOK, dataEnvelope{map[string]any{"heartbeat_interval_seconds": int64(a.heartbeatInterval / time.Second), "lease_duration_seconds": int64(a.leaseDuration / time.Second), "server_time": worker.LastSeenAt, "session_id": worker.SessionID, "session_token": rotated, "session_expires_at": worker.SessionExpiresAt, "cancel_attempts": cancellations}})
+	write(w, http.StatusOK, dataEnvelope{map[string]any{"heartbeat_interval_seconds": int64(a.heartbeatInterval / time.Second), "lease_duration_seconds": int64(a.leaseDuration / time.Second), "server_time": worker.LastSeenAt, "session_expires_at": worker.SessionExpiresAt, "cancel_attempts": cancellations}})
 }
 func workerShouldCancel(state domain.JobState) bool {
 	return state == domain.JobCanceled || state == domain.JobTimedOut || state == domain.JobSessionLost
@@ -514,8 +510,16 @@ func (a *API) workerAttemptRoute(w http.ResponseWriter, r *http.Request, id doma
 		}
 		write(w, http.StatusAccepted, dataEnvelope{map[string]string{"status": "accepted"}})
 	case "complete":
-		attempt, _ := a.store.GetAttempt(r.Context(), id)
-		job, _ := a.store.GetJob(r.Context(), attempt.JobID)
+		attempt, err := a.store.GetAttempt(r.Context(), id)
+		if err != nil {
+			attemptStoreError(w, err)
+			return
+		}
+		job, err := a.store.GetJob(r.Context(), attempt.JobID)
+		if err != nil {
+			attemptStoreError(w, err)
+			return
+		}
 		var req struct {
 			Checkpoint []byte `json:"checkpoint"`
 		}
@@ -534,7 +538,7 @@ func (a *API) workerAttemptRoute(w http.ResponseWriter, r *http.Request, id doma
 				}
 			}
 		}
-		err := a.store.CompleteAttempt(r.Context(), store.Completion{AttemptID: id, WorkerID: worker.ID, AttemptState: domain.AttemptSucceeded, JobState: domain.JobSucceeded, At: now, Event: domain.Event{Type: domain.EventAttemptTransition, Data: map[string]string{"state": "succeeded"}}})
+		err = a.store.CompleteAttempt(r.Context(), store.Completion{AttemptID: id, WorkerID: worker.ID, AttemptState: domain.AttemptSucceeded, JobState: domain.JobSucceeded, At: now, Event: domain.Event{Type: domain.EventAttemptTransition, Data: map[string]string{"state": "succeeded"}}})
 		if err != nil {
 			attemptStoreError(w, err)
 			return
@@ -545,7 +549,11 @@ func (a *API) workerAttemptRoute(w http.ResponseWriter, r *http.Request, id doma
 		}
 		write(w, http.StatusOK, dataEnvelope{map[string]string{"status": "succeeded"}})
 	case "fail":
-		attempt, _ := a.store.GetAttempt(r.Context(), id)
+		attempt, err := a.store.GetAttempt(r.Context(), id)
+		if err != nil {
+			attemptStoreError(w, err)
+			return
+		}
 		var req failureRequest
 		if !decodeWorkerJSON(w, r, &req) {
 			return
@@ -555,7 +563,7 @@ func (a *API) workerAttemptRoute(w http.ResponseWriter, r *http.Request, id doma
 			return
 		}
 		failure := &domain.Failure{Code: req.Code, Message: req.Message, Class: req.Class}
-		err := a.store.CompleteAttempt(r.Context(), store.Completion{AttemptID: id, WorkerID: worker.ID, AttemptState: domain.AttemptFailed, Failure: failure, At: now, Event: domain.Event{Type: domain.EventAttemptTransition, Data: map[string]string{"state": "failed", "code": req.Code}}})
+		err = a.store.CompleteAttempt(r.Context(), store.Completion{AttemptID: id, WorkerID: worker.ID, AttemptState: domain.AttemptFailed, Failure: failure, At: now, Event: domain.Event{Type: domain.EventAttemptTransition, Data: map[string]string{"state": "failed", "code": req.Code}}})
 		if err != nil {
 			attemptStoreError(w, err)
 			return

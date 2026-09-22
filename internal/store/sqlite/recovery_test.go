@@ -3,8 +3,8 @@ package sqlite
 import (
 	"context"
 	"errors"
-	"github.com/ethan/smart-route/internal/domain"
-	"github.com/ethan/smart-route/internal/store"
+	"github.com/ethanbailie/smart-route/internal/domain"
+	"github.com/ethanbailie/smart-route/internal/store"
 	"path/filepath"
 	"testing"
 	"time"

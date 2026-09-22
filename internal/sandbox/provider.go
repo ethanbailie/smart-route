@@ -6,7 +6,7 @@ import (
 	"io"
 	"time"
 
-	"github.com/ethan/smart-route/internal/domain"
+	"github.com/ethanbailie/smart-route/internal/domain"
 )
 
 // Snapshotter is an optional provider capability. Checkpoint recovery remains

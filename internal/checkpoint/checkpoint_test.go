@@ -3,7 +3,7 @@ package checkpoint
 import (
 	"context"
 	"errors"
-	"github.com/ethan/smart-route/internal/domain"
+	"github.com/ethanbailie/smart-route/internal/domain"
 	"os"
 	"path/filepath"
 	"strings"

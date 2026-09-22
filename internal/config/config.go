@@ -35,7 +35,7 @@ type Config struct {
 	Providers   map[string]Provider `yaml:"providers" toml:"providers" json:"providers"`
 	Pools       []Pool              `yaml:"pools" toml:"pools" json:"pools"`
 	Secrets     Secrets             `yaml:"secrets" toml:"secrets" json:"secrets"`
-	Upstreams   map[string]Upstream `yaml:"upstreams" toml:"upstreams" json:"upstreams"`
+	Artifacts   Artifacts           `yaml:"artifacts" toml:"artifacts" json:"artifacts"`
 	Auth        Auth                `yaml:"auth" toml:"auth" json:"auth"`
 	TLS         TLS                 `yaml:"tls" toml:"tls" json:"tls"`
 	Telemetry   Telemetry           `yaml:"telemetry" toml:"telemetry" json:"telemetry"`
@@ -59,7 +59,7 @@ type Provider struct {
 type Pool struct {
 	Name, Provider, Image, Template, CPUClass, MemoryClass, Architecture, Region, BootstrapArtifact string
 	Capabilities                                                                                    []string
-	ExecutorKinds, Upstreams                                                                        []string
+	ExecutorKinds                                                                                   []string
 	Labels                                                                                          map[string]string
 	Environment                                                                                     map[string]string
 	BootstrapCommand                                                                                []string
@@ -68,11 +68,7 @@ type Pool struct {
 	Cost                                                                                            *float64
 }
 type Secrets struct{ Environment map[string]map[string]string }
-type Upstream struct {
-	Enabled              bool
-	Capabilities, Models []string
-	CredentialRef        string
-}
+type Artifacts struct{ Directory string }
 type Auth struct {
 	Token                               string
 	TokenEnv                            string
@@ -85,13 +81,13 @@ type TLS struct {
 }
 type Telemetry struct{ Enabled, Metrics, Tracing bool }
 type Controllers struct {
-	LeaseReaper, JobTimeouts, WorkerHealth, Reconciler, Reaper, Autoscaler    Duration
-	WorkerSuspectAfter, WorkerDeadAfter, IdleAfter, DrainGrace, MaxLifetime   Duration
-	Orphans                                                                   string
-	OwnerLabel, OwnerValue                                                    string
-	MinimumWarm, MaxScaleUpPerRun, ProvisioningConcurrency, MaxTotalSandboxes int
-	MaxSandboxesByProvider                                                    map[string]int
-	ProviderBackoffBase, ProviderBackoffMax                                   Duration
+	LeaseReaper, JobTimeouts, SessionExpiry, WorkerHealth, Reconciler, Reaper, Autoscaler Duration
+	WorkerSuspectAfter, WorkerDeadAfter, IdleAfter, DrainGrace, MaxLifetime               Duration
+	Orphans                                                                               string
+	OwnerLabel, OwnerValue                                                                string
+	MinimumWarm, MaxScaleUpPerRun, ProvisioningConcurrency, MaxTotalSandboxes             int
+	MaxSandboxesByProvider                                                                map[string]int
+	ProviderBackoffBase, ProviderBackoffMax                                               Duration
 }
 type Recovery struct {
 	CheckpointDirectory string   `yaml:"checkpoint_directory" toml:"checkpoint_directory" json:"checkpoint_directory"`
@@ -109,8 +105,8 @@ func Default() Config {
 	return Config{
 		HTTP:     HTTP{Listen: "127.0.0.1:8080", PublicURL: "http://127.0.0.1:8080", RequestTimeout: Duration(30 * time.Second), ReadTimeout: Duration(15 * time.Second), WriteTimeout: Duration(30 * time.Second), IdleTimeout: Duration(60 * time.Second), ShutdownTimeout: Duration(10 * time.Second)},
 		Database: Database{DSN: "smart-route.db"}, Jobs: Jobs{HeartbeatInterval: Duration(10 * time.Second), LeaseDuration: Duration(30 * time.Second), WorkerTimeout: Duration(30 * time.Second), MaxClaimWait: Duration(20 * time.Second), MaxEvents: 100, InlineResultBytes: 64 << 10, MaxResultBytes: 8 << 20, MaxAttempts: 3, RetryBackoff: Duration(time.Second), RetryMaxBackoff: Duration(time.Minute)},
-		Providers: map[string]Provider{}, Secrets: Secrets{Environment: map[string]map[string]string{}}, Upstreams: map[string]Upstream{},
-		Auth: Auth{BootstrapTokenTTL: Duration(5 * time.Minute), WorkerSessionTTL: Duration(5 * time.Minute)}, Controllers: Controllers{LeaseReaper: Duration(5 * time.Second), JobTimeouts: Duration(5 * time.Second), WorkerHealth: Duration(10 * time.Second), Reconciler: Duration(30 * time.Second), Reaper: Duration(30 * time.Second), Autoscaler: Duration(10 * time.Second), WorkerSuspectAfter: Duration(30 * time.Second), WorkerDeadAfter: Duration(time.Minute), DrainGrace: Duration(30 * time.Second), Orphans: "terminate", ProviderBackoffBase: Duration(time.Second), ProviderBackoffMax: Duration(time.Minute)}, Recovery: Recovery{CheckpointDirectory: "checkpoints", Strategy: "application", CheckpointTTL: Duration(24 * time.Hour), Interval: Duration(5 * time.Second), BackoffBase: Duration(time.Second), BackoffMax: Duration(time.Minute), MaxAttempts: 5, RetainLatest: 3},
+		Providers: map[string]Provider{}, Secrets: Secrets{Environment: map[string]map[string]string{}}, Artifacts: Artifacts{Directory: "artifacts"},
+		Auth: Auth{BootstrapTokenTTL: Duration(5 * time.Minute), WorkerSessionTTL: Duration(5 * time.Minute)}, Controllers: Controllers{LeaseReaper: Duration(5 * time.Second), JobTimeouts: Duration(5 * time.Second), SessionExpiry: Duration(5 * time.Second), WorkerHealth: Duration(10 * time.Second), Reconciler: Duration(30 * time.Second), Reaper: Duration(30 * time.Second), Autoscaler: Duration(10 * time.Second), WorkerSuspectAfter: Duration(30 * time.Second), WorkerDeadAfter: Duration(time.Minute), DrainGrace: Duration(30 * time.Second), Orphans: "terminate", ProviderBackoffBase: Duration(time.Second), ProviderBackoffMax: Duration(time.Minute)}, Recovery: Recovery{CheckpointDirectory: "checkpoints", Strategy: "application", CheckpointTTL: Duration(24 * time.Hour), Interval: Duration(5 * time.Second), BackoffBase: Duration(time.Second), BackoffMax: Duration(time.Minute), MaxAttempts: 5, RetainLatest: 3},
 	}
 }
 
@@ -155,7 +151,7 @@ func applyEnv(c *Config) error {
 			}
 		}
 	}
-	for k, target := range map[string]any{"SMART_ROUTE_PROVIDERS": &c.Providers, "SMART_ROUTE_POOLS": &c.Pools, "SMART_ROUTE_UPSTREAMS": &c.Upstreams, "SMART_ROUTE_SECRET_ENVIRONMENT": &c.Secrets.Environment} {
+	for k, target := range map[string]any{"SMART_ROUTE_PROVIDERS": &c.Providers, "SMART_ROUTE_POOLS": &c.Pools, "SMART_ROUTE_SECRET_ENVIRONMENT": &c.Secrets.Environment} {
 		if v, ok := os.LookupEnv(k); ok {
 			if e := json.Unmarshal([]byte(v), target); e != nil {
 				return fmt.Errorf("%s: %w", k, e)
@@ -236,17 +232,10 @@ func (c Config) Validate() error {
 			}
 		}
 	}
-	for name, u := range c.Upstreams {
-		if u.CredentialRef != "" {
-			if _, ok := c.Secrets.Environment[u.CredentialRef]; !ok {
-				add("upstreams."+name+".credential_ref", "references unknown secret")
-			}
-		}
-	}
 	for _, v := range []struct {
 		n string
 		d Duration
-	}{{"controllers.lease_reaper", c.Controllers.LeaseReaper}, {"controllers.job_timeouts", c.Controllers.JobTimeouts}, {"controllers.worker_health", c.Controllers.WorkerHealth}, {"controllers.reconciler", c.Controllers.Reconciler}, {"controllers.reaper", c.Controllers.Reaper}, {"controllers.autoscaler", c.Controllers.Autoscaler}} {
+	}{{"controllers.lease_reaper", c.Controllers.LeaseReaper}, {"controllers.job_timeouts", c.Controllers.JobTimeouts}, {"controllers.session_expiry", c.Controllers.SessionExpiry}, {"controllers.worker_health", c.Controllers.WorkerHealth}, {"controllers.reconciler", c.Controllers.Reconciler}, {"controllers.reaper", c.Controllers.Reaper}, {"controllers.autoscaler", c.Controllers.Autoscaler}} {
 		positive(v.n, v.d)
 	}
 	if c.Controllers.WorkerDeadAfter < c.Controllers.WorkerSuspectAfter {

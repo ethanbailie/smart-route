@@ -11,16 +11,17 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/ethan/smart-route/internal/checkpoint"
-	"github.com/ethan/smart-route/internal/config"
-	"github.com/ethan/smart-route/internal/controller"
-	"github.com/ethan/smart-route/internal/domain"
-	"github.com/ethan/smart-route/internal/httpapi"
-	"github.com/ethan/smart-route/internal/sandbox"
-	"github.com/ethan/smart-route/internal/sandbox/fly"
-	"github.com/ethan/smart-route/internal/sandbox/localdocker"
-	"github.com/ethan/smart-route/internal/store/sqlite"
-	"github.com/ethan/smart-route/internal/telemetry"
+	"github.com/ethanbailie/smart-route/internal/artifact"
+	"github.com/ethanbailie/smart-route/internal/checkpoint"
+	"github.com/ethanbailie/smart-route/internal/config"
+	"github.com/ethanbailie/smart-route/internal/controller"
+	"github.com/ethanbailie/smart-route/internal/domain"
+	"github.com/ethanbailie/smart-route/internal/httpapi"
+	"github.com/ethanbailie/smart-route/internal/sandbox"
+	"github.com/ethanbailie/smart-route/internal/sandbox/fly"
+	"github.com/ethanbailie/smart-route/internal/sandbox/localdocker"
+	"github.com/ethanbailie/smart-route/internal/store/sqlite"
+	"github.com/ethanbailie/smart-route/internal/telemetry"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -65,7 +66,11 @@ func Build(c config.Config) (*Application, error) {
 	if c.Recovery.Strategy == "provider_snapshot" {
 		cp = checkpoint.ProviderSnapshot{Backing: filesystem}
 	}
-	apiConfig := httpapi.Config{RequestTimeout: time.Duration(c.HTTP.RequestTimeout), ReadTimeout: time.Duration(c.HTTP.ReadTimeout), WriteTimeout: time.Duration(c.HTTP.WriteTimeout), IdleTimeout: time.Duration(c.HTTP.IdleTimeout), ShutdownTimeout: time.Duration(c.HTTP.ShutdownTimeout), HeartbeatInterval: time.Duration(c.Jobs.HeartbeatInterval), LeaseDuration: time.Duration(c.Jobs.LeaseDuration), WorkerTimeout: time.Duration(c.Jobs.WorkerTimeout), MaxClaimWait: time.Duration(c.Jobs.MaxClaimWait), BootstrapTokenTTL: time.Duration(c.Auth.BootstrapTokenTTL), WorkerSessionTTL: time.Duration(c.Auth.WorkerSessionTTL), PublicAuthToken: c.AuthToken(), RequireTLS: c.TLS.Required, InsecureLocalMode: c.Auth.InsecureLocal, InlineResultBytes: c.Jobs.InlineResultBytes, MaxResultBytes: c.Jobs.MaxResultBytes, MaxEvents: c.Jobs.MaxEvents, Telemetry: tel, CheckpointAdapter: cp, CheckpointTTL: time.Duration(c.Recovery.CheckpointTTL), RecoveryBackoff: time.Duration(c.Recovery.BackoffBase), Providers: registry}
+	var art httpapi.ArtifactStore
+	if c.Artifacts.Directory != "" {
+		art = &artifact.Filesystem{Root: c.Artifacts.Directory}
+	}
+	apiConfig := httpapi.Config{RequestTimeout: time.Duration(c.HTTP.RequestTimeout), ReadTimeout: time.Duration(c.HTTP.ReadTimeout), WriteTimeout: time.Duration(c.HTTP.WriteTimeout), IdleTimeout: time.Duration(c.HTTP.IdleTimeout), ShutdownTimeout: time.Duration(c.HTTP.ShutdownTimeout), HeartbeatInterval: time.Duration(c.Jobs.HeartbeatInterval), LeaseDuration: time.Duration(c.Jobs.LeaseDuration), WorkerTimeout: time.Duration(c.Jobs.WorkerTimeout), MaxClaimWait: time.Duration(c.Jobs.MaxClaimWait), BootstrapTokenTTL: time.Duration(c.Auth.BootstrapTokenTTL), WorkerSessionTTL: time.Duration(c.Auth.WorkerSessionTTL), PublicAuthToken: c.AuthToken(), RequireTLS: c.TLS.Required, InsecureLocalMode: c.Auth.InsecureLocal, InlineResultBytes: c.Jobs.InlineResultBytes, MaxResultBytes: c.Jobs.MaxResultBytes, MaxEvents: c.Jobs.MaxEvents, Pools: c.Pools, ArtifactStore: art, Telemetry: tel, CheckpointAdapter: cp, CheckpointTTL: time.Duration(c.Recovery.CheckpointTTL), RecoveryBackoff: time.Duration(c.Recovery.BackoffBase), Providers: registry}
 	api := httpapi.New(db, apiConfig)
 	server := api.HTTPServer(c.HTTP.Listen, apiConfig)
 	a := &Application{Config: c, DB: db, Server: server}
@@ -76,7 +81,9 @@ func Build(c config.Config) (*Application, error) {
 	timeouts := controller.NewJobTimeouts(db, nil)
 	add(func(ctx context.Context) error { return timeouts.Start(ctx, time.Duration(c.Controllers.JobTimeouts)) })
 	sessions := controller.NewSessionExpiry(db, nil)
-	add(func(ctx context.Context) error { return sessions.Start(ctx, time.Duration(c.Controllers.JobTimeouts)) })
+	add(func(ctx context.Context) error {
+		return sessions.Start(ctx, time.Duration(c.Controllers.SessionExpiry))
+	})
 	health := controller.NewWorkerHealth(db, controller.WorkerHealthConfig{SuspectAfter: time.Duration(c.Controllers.WorkerSuspectAfter), DeadAfter: time.Duration(c.Controllers.WorkerDeadAfter)}, nil)
 	add(func(ctx context.Context) error { return health.Start(ctx, time.Duration(c.Controllers.WorkerHealth)) })
 	reconcile := controller.NewSandboxReconciler(db, registry, controller.ReconcileConfig{OwnerLabel: c.Controllers.OwnerLabel, OwnerValue: c.Controllers.OwnerValue, Orphans: controller.OrphanPolicy(c.Controllers.Orphans), MaxLifetime: time.Duration(c.Controllers.MaxLifetime), DrainGrace: time.Duration(c.Controllers.DrainGrace)}, nil)
@@ -86,7 +93,7 @@ func Build(c config.Config) (*Application, error) {
 	add(func(ctx context.Context) error { return reaper.Start(ctx, time.Duration(c.Controllers.Reaper)) })
 	pools := make([]controller.SandboxPool, 0, len(c.Pools))
 	for _, p := range c.Pools {
-		caps := domain.Capabilities{Capabilities: append([]string(nil), p.Capabilities...), Labels: p.Labels, Architecture: domain.Architecture(p.Architecture), Region: p.Region, Upstreams: append([]string(nil), p.Upstreams...), ExecutorKinds: executorKinds(p.ExecutorKinds)}
+		caps := domain.Capabilities{Capabilities: append([]string(nil), p.Capabilities...), Labels: p.Labels, Architecture: domain.Architecture(p.Architecture), Region: p.Region, ExecutorKinds: executorKinds(p.ExecutorKinds)}
 		env := map[string]domain.CredentialRefID{}
 		for k, v := range p.Environment {
 			env[k] = domain.CredentialRefID(v)

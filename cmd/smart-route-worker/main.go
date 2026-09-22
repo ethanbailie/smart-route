@@ -10,14 +10,15 @@ import (
 	"os"
 	"os/signal"
 	"runtime"
+	"sort"
 	"strconv"
 	"strings"
 	"syscall"
 	"time"
 
-	"github.com/ethan/smart-route/internal/buildinfo"
-	"github.com/ethan/smart-route/internal/domain"
-	"github.com/ethan/smart-route/internal/worker"
+	"github.com/ethanbailie/smart-route/internal/buildinfo"
+	"github.com/ethanbailie/smart-route/internal/domain"
+	"github.com/ethanbailie/smart-route/internal/worker"
 )
 
 func main() {
@@ -48,7 +49,7 @@ func load() (worker.Config, worker.ControlPlane, error) {
 	max := intEnv("SMART_ROUTE_MAX_CONCURRENCY", 1)
 	labels := stringMap(os.Getenv("SMART_ROUTE_LABELS"))
 	capabilities := listEnv("SMART_ROUTE_CAPABILITIES")
-	upstreams := listEnv("SMART_ROUTE_UPSTREAMS")
+
 	allow := listEnv("SMART_ROUTE_COMMAND_ALLOWLIST")
 	if len(allow) == 0 {
 		allow = []string{"/bin/sh", "/bin/echo"}
@@ -56,9 +57,16 @@ func load() (worker.Config, worker.ControlPlane, error) {
 	secrets := secretValues()
 	executors := map[string]worker.Executor{
 		"command": worker.NewCommandExecutor(worker.CommandConfig{Allowlist: allow, MaxOutputBytes: int64(intEnv("SMART_ROUTE_MAX_OUTPUT_BYTES", 1<<20)), EmitChunks: boolEnv("SMART_ROUTE_EMIT_CHUNKS"), Secrets: secrets}),
-		"http":    worker.NewHTTPExecutor(worker.HTTPConfig{MaxResponseBytes: int64(intEnv("SMART_ROUTE_MAX_HTTP_RESPONSE_BYTES", 1<<20))}),
 	}
-	caps := domain.Capabilities{Capabilities: capabilities, Labels: labels, Architecture: domain.Architecture(runtime.GOARCH), Region: os.Getenv("SMART_ROUTE_REGION"), ExecutorKinds: []domain.ExecutorKind{domain.ExecutorProcess, domain.ExecutorRemote}, Upstreams: upstreams}
+	if httpAllowed := listEnv("SMART_ROUTE_HTTP_ALLOWED_HOSTS"); len(httpAllowed) > 0 {
+		executors["http"] = worker.NewHTTPExecutor(worker.HTTPConfig{MaxResponseBytes: int64(intEnv("SMART_ROUTE_MAX_HTTP_RESPONSE_BYTES", 1<<20)), MaxRequestBytes: int64(intEnv("SMART_ROUTE_MAX_HTTP_REQUEST_BYTES", 1<<20)), AllowedHosts: httpAllowed, Secrets: secrets})
+	}
+	executorKinds := make([]domain.ExecutorKind, 0, len(executors))
+	for kind := range executors {
+		executorKinds = append(executorKinds, domain.ExecutorKind(kind))
+	}
+	sort.Slice(executorKinds, func(i, j int) bool { return executorKinds[i] < executorKinds[j] })
+	caps := domain.Capabilities{Capabilities: capabilities, Labels: labels, Architecture: domain.Architecture(runtime.GOARCH), Region: os.Getenv("SMART_ROUTE_REGION"), ExecutorKinds: executorKinds}
 	registration := worker.RegistrationRequest{BootstrapToken: os.Getenv("SMART_ROUTE_BOOTSTRAP_TOKEN"), InstanceID: instanceID(), SandboxID: envDefault("SMART_ROUTE_SANDBOX_ID", hostname()), SandboxProvider: envDefault("SMART_ROUTE_SANDBOX_PROVIDER", "standalone"), Version: buildinfo.Version, Capabilities: caps, MaxConcurrency: max, SandboxMetadata: map[string]string{"runtime": "worker", "hostname": hostname(), "git_sha": buildinfo.GitSHA, "protocol_version": buildinfo.ProtocolVersion}}
 	cfg := worker.Config{Registration: registration, Executors: executors, ClaimWait: durationEnv("SMART_ROUTE_CLAIM_WAIT", 20*time.Second), ShutdownTimeout: durationEnv("SMART_ROUTE_SHUTDOWN_TIMEOUT", 30*time.Second), CancelOnShutdown: boolEnv("SMART_ROUTE_CANCEL_ON_SHUTDOWN"), Secrets: secrets, EventRetryBuffer: intEnv("SMART_ROUTE_EVENT_RETRY_BUFFER", 64)}
 	if roots := listEnv("SMART_ROUTE_CHECKPOINT_PATHS"); len(roots) > 0 {

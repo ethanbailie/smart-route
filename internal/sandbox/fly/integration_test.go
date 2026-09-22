@@ -14,12 +14,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ethan/smart-route/internal/controller"
-	"github.com/ethan/smart-route/internal/domain"
-	"github.com/ethan/smart-route/internal/httpapi"
-	"github.com/ethan/smart-route/internal/sandbox"
-	"github.com/ethan/smart-route/internal/store/sqlite"
-	"github.com/ethan/smart-route/pkg/client"
+	"github.com/ethanbailie/smart-route/internal/controller"
+	"github.com/ethanbailie/smart-route/internal/domain"
+	"github.com/ethanbailie/smart-route/internal/httpapi"
+	"github.com/ethanbailie/smart-route/internal/sandbox"
+	"github.com/ethanbailie/smart-route/internal/store/sqlite"
+	"github.com/ethanbailie/smart-route/pkg/client"
 )
 
 // TestLiveWorkerE2E is excluded from default tests. The caller must expose the
@@ -65,7 +65,7 @@ func TestLiveWorkerE2E(t *testing.T) {
 		t.Fatal(err)
 	}
 	id := domain.SandboxID(fmt.Sprintf("fly-e2e-%d", time.Now().UnixNano()))
-	caps := domain.Capabilities{Labels: map[string]string{"pool": "fly-e2e"}, Architecture: domain.ArchitectureAMD64, ExecutorKinds: []domain.ExecutorKind{domain.ExecutorProcess, domain.ExecutorRemote}}
+	caps := domain.Capabilities{Labels: map[string]string{"pool": "fly-e2e"}, Architecture: domain.ArchitectureAMD64, ExecutorKinds: []domain.ExecutorKind{domain.ExecutorCommand}}
 	bootstrap, err := api.MintBootstrapToken(ctx, id, ProviderName, "fly-e2e", caps)
 	if err != nil {
 		t.Fatal(err)
@@ -95,7 +95,7 @@ func TestLiveWorkerE2E(t *testing.T) {
 		return false
 	})
 	payload, _ := json.Marshal(map[string]any{"command": "/bin/echo", "args": []string{"fly-e2e-ok"}, "timeout_seconds": 15})
-	job, err := local.SubmitJob(ctx, client.SubmitJob{IdempotencyKey: string(id), Kind: "command", Payload: payload, Constraints: client.Constraints{Labels: map[string]string{"pool": "fly-e2e"}, ExecutorKind: "process", PreferredSandbox: string(id)}, TimeoutSeconds: 60, Retry: client.Retry{MaxAttempts: 1}})
+	job, err := local.SubmitJob(ctx, client.SubmitJob{IdempotencyKey: string(id), Kind: "command", Payload: payload, Constraints: client.Constraints{Labels: map[string]string{"pool": "fly-e2e"}, ExecutorKind: "command", PreferredSandbox: string(id)}, TimeoutSeconds: 60, Retry: client.Retry{MaxAttempts: 1}})
 	if err != nil {
 		t.Fatal(err)
 	}

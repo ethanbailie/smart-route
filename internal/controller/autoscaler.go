@@ -15,9 +15,9 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/ethan/smart-route/internal/domain"
-	"github.com/ethan/smart-route/internal/sandbox"
-	"github.com/ethan/smart-route/internal/store"
+	"github.com/ethanbailie/smart-route/internal/domain"
+	"github.com/ethanbailie/smart-route/internal/sandbox"
+	"github.com/ethanbailie/smart-route/internal/store"
 )
 
 const poolLabel = "smart-route.pool"
@@ -292,9 +292,9 @@ func (c *QueueAutoscaler) run(ctx context.Context) error {
 				if count <= 0 {
 					decision.Reason = "global or provider sandbox limit reached"
 				} else {
-					provisionStarted := time.Now()
+					provisionStarted := now(c.Clock)
 					created, createErr := c.createMany(ctx, provider, pool, at, count)
-					decision.ProvisionDuration = time.Since(provisionStarted)
+					decision.ProvisionDuration = now(c.Clock).Sub(provisionStarted)
 					decision.ProvisionFailures = count - created
 					decision.Changed += created
 					totalCurrent += created

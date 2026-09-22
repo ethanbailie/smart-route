@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ethan/smart-route/internal/httpapi"
-	"github.com/ethan/smart-route/internal/store/sqlite"
+	"github.com/ethanbailie/smart-route/internal/httpapi"
+	"github.com/ethanbailie/smart-route/internal/store/sqlite"
 )
 
 func TestClientAgainstAPI(t *testing.T) {

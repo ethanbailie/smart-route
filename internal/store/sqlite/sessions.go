@@ -8,8 +8,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ethan/smart-route/internal/domain"
-	"github.com/ethan/smart-route/internal/store"
+	"github.com/ethanbailie/smart-route/internal/domain"
+	"github.com/ethanbailie/smart-route/internal/store"
 )
 
 func (s *DB) CreateSession(ctx context.Context, v domain.Session) (domain.Session, error) {

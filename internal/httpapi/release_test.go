@@ -6,7 +6,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/ethan/smart-route/internal/buildinfo"
+	"github.com/ethanbailie/smart-route/internal/buildinfo"
 )
 
 func TestVersionEndpoint(t *testing.T) {

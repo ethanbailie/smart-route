@@ -7,7 +7,7 @@ import (
 	"errors"
 	"time"
 
-	"github.com/ethan/smart-route/internal/domain"
+	"github.com/ethanbailie/smart-route/internal/domain"
 )
 
 var (
@@ -48,12 +48,6 @@ type EventSink interface {
 
 type OperationObserver interface {
 	Start(context.Context, string, ...any) (context.Context, func(error))
-}
-
-type UpstreamObserver interface {
-	OperationObserver
-	UpstreamCall(string, string, bool)
-	Upstream(string, string, float64)
 }
 
 type Executor interface {

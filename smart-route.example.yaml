@@ -21,7 +21,7 @@ pools:
   - name: local
     provider: docker
     capabilities: [shell]
-    executor_kinds: [process]
+    executor_kinds: [command]
     min_replicas: 0
     max_replicas: 2
     worker_concurrency: 1

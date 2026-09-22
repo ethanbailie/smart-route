@@ -19,13 +19,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ethan/smart-route/internal/controller"
-	"github.com/ethan/smart-route/internal/domain"
-	"github.com/ethan/smart-route/internal/sandbox"
-	"github.com/ethan/smart-route/internal/sandbox/fake"
-	"github.com/ethan/smart-route/internal/store"
-	"github.com/ethan/smart-route/internal/store/sqlite"
-	"github.com/ethan/smart-route/pkg/client"
+	"github.com/ethanbailie/smart-route/internal/controller"
+	"github.com/ethanbailie/smart-route/internal/domain"
+	"github.com/ethanbailie/smart-route/internal/sandbox"
+	"github.com/ethanbailie/smart-route/internal/sandbox/fake"
+	"github.com/ethanbailie/smart-route/internal/store"
+	"github.com/ethanbailie/smart-route/internal/store/sqlite"
+	"github.com/ethanbailie/smart-route/pkg/client"
 )
 
 // TestDockerSQLiteChaos exercises the control plane as a child process and
@@ -65,7 +65,7 @@ func TestDockerSQLiteChaos(t *testing.T) {
 
 	command := func(key, shell string, attempts int, preferred ...string) client.Job {
 		payload, _ := json.Marshal(map[string]any{"command": "/bin/sh", "args": []string{"-c", shell}})
-		constraints := client.Constraints{ExecutorKind: "process", Labels: map[string]string{"smart-route.pool": "chaos"}}
+		constraints := client.Constraints{ExecutorKind: "command", Labels: map[string]string{"smart-route.pool": "chaos"}}
 		if len(preferred) > 0 {
 			constraints.PreferredSandbox = preferred[0]
 		}
@@ -500,7 +500,7 @@ pools:
     provider: docker
     image: %s
     capabilities: [shell]
-    executor_kinds: [process, remote]
+    executor_kinds: [command]
     architecture: amd64
     labels: {chaos-owner: "1"}
     min_replicas: 4
