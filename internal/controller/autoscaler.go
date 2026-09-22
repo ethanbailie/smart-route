@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"cmp"
 	"context"
 	"crypto/rand"
 	"crypto/sha256"
@@ -10,7 +11,8 @@ import (
 	"fmt"
 	"hash/fnv"
 	"math"
-	"sort"
+	"slices"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -169,7 +171,7 @@ func (c *QueueAutoscaler) run(ctx context.Context) error {
 	}
 
 	pools := append([]SandboxPool(nil), c.Pools...)
-	sort.Slice(pools, func(i, j int) bool { return pools[i].Name < pools[j].Name })
+	slices.SortFunc(pools, func(a, b SandboxPool) int { return strings.Compare(a.Name, b.Name) })
 	demand := make(map[string]int, len(pools))
 	for _, job := range jobs {
 		if job.SessionID != "" {
@@ -226,7 +228,7 @@ func (c *QueueAutoscaler) run(ctx context.Context) error {
 		decision.Current = decision.Ready + decision.Starting + decision.Draining
 		remaining := decision.Queued
 		ready := append([]domain.Sandbox(nil), owned...)
-		sort.Slice(ready, func(i, j int) bool { return ready[i].ID < ready[j].ID })
+		slices.SortFunc(ready, func(a, b domain.Sandbox) int { return cmp.Compare(a.ID, b.ID) })
 		active := 0
 		for _, box := range ready {
 			worker, ok := workerBySandbox[box.ID]
@@ -484,11 +486,8 @@ func (c *QueueAutoscaler) create(ctx context.Context, provider sandbox.Provider,
 }
 
 func (c *QueueAutoscaler) drain(ctx context.Context, boxes []domain.Sandbox, workers map[domain.SandboxID]domain.Worker, wanted int, idleTTL time.Duration, at time.Time) (int, error) {
-	sort.Slice(boxes, func(i, j int) bool {
-		if boxes[i].UpdatedAt.Equal(boxes[j].UpdatedAt) {
-			return boxes[i].ID < boxes[j].ID
-		}
-		return boxes[i].UpdatedAt.Before(boxes[j].UpdatedAt)
+	slices.SortFunc(boxes, func(a, b domain.Sandbox) int {
+		return cmp.Or(a.UpdatedAt.Compare(b.UpdatedAt), cmp.Compare(a.ID, b.ID))
 	})
 	drained := 0
 	for _, box := range boxes {
@@ -525,21 +524,13 @@ func selectPool(pools []SandboxPool, constraints domain.RoutingConstraints) (San
 	if len(compatible) == 0 {
 		return SandboxPool{}, false
 	}
-	sort.SliceStable(compatible, func(i, j int) bool {
-		a, b := compatible[i], compatible[j]
-		if constraints.PreferredProvider != "" && (a.Provider == constraints.PreferredProvider) != (b.Provider == constraints.PreferredProvider) {
-			return a.Provider == constraints.PreferredProvider
-		}
-		if constraints.PreferredRegion != "" && (poolRegion(a) == constraints.PreferredRegion) != (poolRegion(b) == constraints.PreferredRegion) {
-			return poolRegion(a) == constraints.PreferredRegion
-		}
-		if a.Cost != nil && b.Cost != nil && *a.Cost != *b.Cost {
-			return *a.Cost < *b.Cost
-		}
-		if a.Cost != nil && b.Cost == nil {
-			return true
-		}
-		return a.Name < b.Name
+	slices.SortStableFunc(compatible, func(a, b SandboxPool) int {
+		return cmp.Or(
+			preferredCmp(a.Provider == constraints.PreferredProvider, b.Provider == constraints.PreferredProvider),
+			preferredCmp(poolRegion(a) == constraints.PreferredRegion, poolRegion(b) == constraints.PreferredRegion),
+			costCmp(a.Cost, b.Cost),
+			strings.Compare(a.Name, b.Name),
+		)
 	})
 	return compatible[0], true
 }
@@ -553,6 +544,31 @@ func hasProvider(pools []SandboxPool, constraints domain.RoutingConstraints, pro
 	}
 	return false
 }
+
+// preferredCmp orders preferred (true) before non-preferred (false); a zero
+// preference value keeps the original order.
+func preferredCmp(a, b bool) int {
+	return cmp.Compare(btoi(b), btoi(a))
+}
+
+// costCmp orders nil cost last, matching the original pool tie-break.
+func costCmp(a, b *float64) int {
+	if a != nil && b != nil {
+		return cmp.Compare(*a, *b)
+	}
+	if a != nil {
+		return -1
+	}
+	return 0
+}
+
+func btoi(ok bool) int {
+	if ok {
+		return 1
+	}
+	return 0
+}
+
 func poolRegion(pool SandboxPool) string {
 	if pool.Region != "" {
 		return pool.Region

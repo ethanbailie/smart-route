@@ -19,7 +19,6 @@ import (
 
 	"github.com/ethanbailie/smart-route/internal/buildinfo"
 	"github.com/ethanbailie/smart-route/internal/checkpoint"
-	"github.com/ethanbailie/smart-route/internal/config"
 	"github.com/ethanbailie/smart-route/internal/domain"
 	"github.com/ethanbailie/smart-route/internal/sandbox"
 	"github.com/ethanbailie/smart-route/internal/scheduler"
@@ -42,7 +41,7 @@ type Config struct {
 	BootstrapTokenTTL, WorkerSessionTTL                                     time.Duration
 	Scheduler                                                               scheduler.Scheduler
 	ArtifactStore                                                           ArtifactStore
-	Pools                                                                   []config.Pool
+	Pools                                                                   []string
 	PublicAuthToken                                                         string
 	RequireTLS, InsecureLocalMode                                           bool
 	InlineResultBytes, MaxResultBytes, MaxEvents                            int
@@ -274,8 +273,8 @@ func New(s store.Store, c Config) *API {
 		backoff = time.Second
 	}
 	pools := make(map[string]struct{}, len(c.Pools))
-	for _, p := range c.Pools {
-		pools[p.Name] = struct{}{}
+	for _, name := range c.Pools {
+		pools[name] = struct{}{}
 	}
 	api := &API{store: s, timeout: t, heartbeatInterval: heartbeat, leaseDuration: lease, maxClaimWait: wait, wake: make(chan struct{}, 1), scheduler: policy, artifacts: c.ArtifactStore, inlineResultBytes: inline, maxResultBytes: maxResult, maxEvents: maxEvents, pools: pools, bootstrapTokenTTL: bootstrapTTL, workerSessionTTL: sessionTTL, requireTLS: c.RequireTLS, insecureLocalMode: c.InsecureLocalMode, telemetry: c.Telemetry, checkpoints: c.CheckpointAdapter, checkpointTTL: c.CheckpointTTL, recoveryBackoff: backoff, providers: c.Providers}
 	if c.PublicAuthToken != "" {

@@ -2,6 +2,7 @@ package domain
 
 import (
 	"encoding/json"
+	"slices"
 	"time"
 )
 
@@ -195,7 +196,7 @@ type RoutingConstraints struct {
 
 func (c Capabilities) Satisfies(required RoutingConstraints) bool {
 	for _, capability := range required.Capabilities {
-		if !contains(c.Capabilities, capability) {
+		if !slices.Contains(c.Capabilities, capability) {
 			return false
 		}
 	}
@@ -205,7 +206,7 @@ func (c Capabilities) Satisfies(required RoutingConstraints) bool {
 	if required.Region != "" && c.Region != required.Region {
 		return false
 	}
-	if required.ExecutorKind != "" && !contains(c.ExecutorKinds, required.ExecutorKind) {
+	if required.ExecutorKind != "" && !slices.Contains(c.ExecutorKinds, required.ExecutorKind) {
 		return false
 	}
 	for key, value := range required.Labels {
@@ -214,15 +215,6 @@ func (c Capabilities) Satisfies(required RoutingConstraints) bool {
 		}
 	}
 	return true
-}
-
-func contains[T comparable](values []T, wanted T) bool {
-	for _, value := range values {
-		if value == wanted {
-			return true
-		}
-	}
-	return false
 }
 
 type RetryPolicy struct {

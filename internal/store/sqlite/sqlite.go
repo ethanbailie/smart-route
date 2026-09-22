@@ -49,34 +49,36 @@ func Open(path string) (*DB, error) {
 }
 func (s *DB) Close() error { return s.db.Close() }
 func (s *DB) migrate(ctx context.Context) error {
-	b, e := migrationFS.ReadFile("migrations/001_initial.sql")
-	if e != nil {
-		return e
+	// schema_migrations is created by 001 itself; the table must exist before
+	// the applied-check below can run on a fresh database.
+	if _, err := s.db.ExecContext(ctx, `CREATE TABLE IF NOT EXISTS schema_migrations (version INTEGER PRIMARY KEY, applied_at TIMESTAMP NOT NULL)`); err != nil {
+		return fmt.Errorf("sqlite migration: %w", err)
 	}
-	if _, e = s.db.ExecContext(ctx, string(b)); e != nil {
-		return fmt.Errorf("sqlite migration: %w", e)
+	files, err := migrationFS.ReadDir("migrations")
+	if err != nil {
+		return err
 	}
-	_, e = s.db.ExecContext(ctx, `INSERT OR IGNORE INTO schema_migrations VALUES(1,?)`, time.Now().UTC())
-	if e != nil {
-		return e
-	}
-	for version := 2; version <= 10; version++ {
+	for _, file := range files {
+		var version int
+		if _, err := fmt.Sscanf(file.Name(), "%d_", &version); err != nil {
+			continue
+		}
 		var applied int
-		if e = s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM schema_migrations WHERE version=?`, version).Scan(&applied); e != nil {
-			return e
+		if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM schema_migrations WHERE version=?`, version).Scan(&applied); err != nil {
+			return err
 		}
 		if applied != 0 {
 			continue
 		}
-		b, e = migrationFS.ReadFile(fmt.Sprintf("migrations/%03d_%s.sql", version, map[int]string{2: "worker_protocol", 3: "worker_identity_capacity", 4: "durable_results", 5: "controllers", 6: "pending_sandboxes", 7: "worker_auth", 8: "sessions", 9: "session_recovery", 10: "recovery_ack_events"}[version]))
-		if e != nil {
-			return e
+		sql, err := migrationFS.ReadFile("migrations/" + file.Name())
+		if err != nil {
+			return err
 		}
 		tx, err := s.db.BeginTx(ctx, nil)
 		if err != nil {
 			return err
 		}
-		if _, err = tx.ExecContext(ctx, string(b)); err != nil {
+		if _, err = tx.ExecContext(ctx, string(sql)); err != nil {
 			tx.Rollback()
 			return fmt.Errorf("sqlite migration %d: %w", version, err)
 		}

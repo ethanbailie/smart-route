@@ -12,7 +12,7 @@ import (
 	"fmt"
 	"net/url"
 	"os/exec"
-	"sort"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -350,7 +350,7 @@ func sortedCredentialKeys(values map[string]domain.CredentialRefID) []string {
 	for key := range values {
 		keys = append(keys, key)
 	}
-	sort.Strings(keys)
+	slices.Sort(keys)
 	return keys
 }
 

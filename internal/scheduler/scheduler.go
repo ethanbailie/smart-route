@@ -2,7 +2,8 @@
 package scheduler
 
 import (
-	"sort"
+	"cmp"
+	"slices"
 	"strings"
 	"time"
 
@@ -76,14 +77,12 @@ func (p *Policy) Rank(r Request) Result {
 		}
 		items = append(items, scored{job, p.score(job, r)})
 	}
-	sort.SliceStable(items, func(i, j int) bool {
-		if items[i].score != items[j].score {
-			return items[i].score > items[j].score
-		}
-		if !items[i].job.CreatedAt.Equal(items[j].job.CreatedAt) {
-			return items[i].job.CreatedAt.Before(items[j].job.CreatedAt)
-		}
-		return items[i].job.ID < items[j].job.ID
+	slices.SortStableFunc(items, func(a, b scored) int {
+		return cmp.Or(
+			cmp.Compare(b.score, a.score),
+			a.job.CreatedAt.Compare(b.job.CreatedAt),
+			cmp.Compare(a.job.ID, b.job.ID),
+		)
 	})
 	out := Result{Ranked: make([]domain.Job, len(items))}
 	for i := range items {
@@ -112,11 +111,11 @@ func eligible(j domain.Job, r Request) ReasonCode {
 		return ReasonSandbox
 	}
 	for _, v := range c.Capabilities {
-		if !has(w.Capabilities.Capabilities, v) || !has(r.Sandbox.Capabilities.Capabilities, v) {
+		if !slices.Contains(w.Capabilities.Capabilities, v) || !slices.Contains(r.Sandbox.Capabilities.Capabilities, v) {
 			return ReasonCapability
 		}
 	}
-	if c.ExecutorKind != "" && (!has(w.Capabilities.ExecutorKinds, c.ExecutorKind) || !has(r.Sandbox.Capabilities.ExecutorKinds, c.ExecutorKind)) {
+	if c.ExecutorKind != "" && (!slices.Contains(w.Capabilities.ExecutorKinds, c.ExecutorKind) || !slices.Contains(r.Sandbox.Capabilities.ExecutorKinds, c.ExecutorKind)) {
 		return ReasonExecutor
 	}
 	for k, v := range c.Labels {
@@ -161,12 +160,4 @@ func (p *Policy) score(j domain.Job, r Request) float64 {
 }
 func exact(c domain.RoutingConstraints, a domain.Capabilities) bool {
 	return len(c.Capabilities) == len(a.Capabilities) && len(c.Labels) == len(a.Labels) && (c.Architecture == "" || c.Architecture == a.Architecture) && (c.Region == "" || c.Region == a.Region)
-}
-func has[T comparable](values []T, wanted T) bool {
-	for _, v := range values {
-		if v == wanted {
-			return true
-		}
-	}
-	return false
 }

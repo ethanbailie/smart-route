@@ -7,7 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"sort"
+	"slices"
 	"sync/atomic"
 	"time"
 
@@ -337,7 +337,7 @@ func (c *SandboxReaper) run(ctx context.Context) error {
 	for _, worker := range workers {
 		busy[worker.ID] = worker.ReservedSessionID != "" || len(worker.ActiveAttempts) > 0 || worker.AvailableSlots < worker.MaxConcurrency
 	}
-	sort.Slice(items, func(i, j int) bool { return items[i].CreatedAt.Before(items[j].CreatedAt) })
+	slices.SortFunc(items, func(a, b domain.Sandbox) int { return a.CreatedAt.Compare(b.CreatedAt) })
 	warm := map[string]int{}
 	for _, v := range items {
 		if v.State.Runnable() {

@@ -3,6 +3,7 @@ package fly
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"crypto/rand"
 	"encoding/hex"
@@ -13,7 +14,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"sort"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -243,7 +244,7 @@ func (p *Provider) List(ctx context.Context, filter sandbox.Filter) ([]sandbox.S
 			result = append(result, item)
 		}
 	}
-	sort.Slice(result, func(i, j int) bool { return result[i].ID < result[j].ID })
+	slices.SortFunc(result, func(a, b sandbox.Sandbox) int { return cmp.Compare(a.ID, b.ID) })
 	return result, nil
 }
 
