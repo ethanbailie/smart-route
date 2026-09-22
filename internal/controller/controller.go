@@ -262,10 +262,7 @@ func (c *SandboxReconciler) run(ctx context.Context) error {
 					}
 				}
 				if !record.DrainAt.IsZero() && at.Sub(record.DrainAt) >= c.Config.DrainGrace {
-					if err = c.Store.SetSandboxState(ctx, item.ID, domain.SandboxTerminating, at); err != nil {
-						return err
-					}
-					if err = provider.Terminate(ctx, item.ID); err != nil {
+					if err = terminateSandbox(ctx, c.Store, provider, item.ID, at); err != nil {
 						return err
 					}
 				}
@@ -295,6 +292,19 @@ func (c *SandboxReconciler) Start(ctx context.Context, interval time.Duration) e
 
 func fromProvider(name string, v sandbox.Sandbox, at time.Time) domain.Sandbox {
 	return domain.Sandbox{ID: v.ID, WorkerID: v.WorkerID, Provider: name, ExternalID: v.ExternalID, Capabilities: v.Capabilities, State: v.State, CreatedAt: v.CreatedAt, UpdatedAt: at}
+}
+
+type sandboxStateSetter interface {
+	SetSandboxState(context.Context, domain.SandboxID, domain.SandboxState, time.Time) error
+}
+
+// terminateSandbox marks the record terminating before asking the provider to
+// destroy it, so a failed terminate is retried by the next reconciliation.
+func terminateSandbox(ctx context.Context, store sandboxStateSetter, provider sandbox.Provider, id domain.SandboxID, at time.Time) error {
+	if err := store.SetSandboxState(ctx, id, domain.SandboxTerminating, at); err != nil {
+		return err
+	}
+	return provider.Terminate(ctx, id)
 }
 
 type ReaperConfig struct {
@@ -340,10 +350,7 @@ func (c *SandboxReaper) run(ctx context.Context) error {
 			return err
 		}
 		if v.State == domain.SandboxDraining && !v.DrainAt.IsZero() && at.Sub(v.DrainAt) >= c.Config.DrainGrace {
-			if err = c.Store.SetSandboxState(ctx, v.ID, domain.SandboxTerminating, at); err != nil {
-				return err
-			}
-			if err = provider.Terminate(ctx, v.ID); err != nil {
+			if err = terminateSandbox(ctx, c.Store, provider, v.ID, at); err != nil {
 				return err
 			}
 			continue

@@ -264,10 +264,7 @@ func (c *QueueAutoscaler) run(ctx context.Context) error {
 			_, registered := workerBySandbox[box.ID]
 			starting := box.State == domain.SandboxCreating || (box.State.Runnable() && !registered)
 			if starting && pool.StartupTimeout > 0 && at.Sub(box.CreatedAt) >= pool.StartupTimeout {
-				if err = c.Store.SetSandboxState(ctx, box.ID, domain.SandboxTerminating, at); err != nil {
-					return err
-				}
-				if err = provider.Terminate(ctx, box.ID); err != nil {
+				if err = terminateSandbox(ctx, c.Store, provider, box.ID, at); err != nil {
 					return err
 				}
 				decision.Action, decision.Reason, decision.Changed = ScaleTimeout, "sandbox exceeded startup timeout", decision.Changed+1
