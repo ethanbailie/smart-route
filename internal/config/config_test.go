@@ -41,7 +41,7 @@ func TestLoadRejectsUnknownFieldWithPath(t *testing.T) {
 		t.Fatal(e)
 	}
 	_, e := Load(p)
-	if e == nil || !strings.Contains(e.Error(), "http.request_timout") {
+	if e == nil || !strings.Contains(e.Error(), "request_timout") {
 		t.Fatalf("error = %v", e)
 	}
 }
@@ -51,7 +51,7 @@ func TestLoadRejectsUnknownTOMLFieldWithPath(t *testing.T) {
 		t.Fatal(e)
 	}
 	_, e := Load(p)
-	if e == nil || !strings.Contains(e.Error(), "http.request_timout") {
+	if e == nil || !strings.Contains(e.Error(), "request_timout") {
 		t.Fatalf("error = %v", e)
 	}
 }

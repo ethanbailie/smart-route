@@ -1,9 +1,11 @@
 package config
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"net/url"
 	"os"
@@ -27,6 +29,18 @@ func (d *Duration) UnmarshalText(b []byte) error {
 	return nil
 }
 func (d Duration) MarshalText() ([]byte, error) { return []byte(time.Duration(d).String()), nil }
+func (d *Duration) UnmarshalJSON(b []byte) error {
+	var s string
+	if json.Unmarshal(b, &s) == nil {
+		return d.UnmarshalText([]byte(s))
+	}
+	var n int64
+	if e := json.Unmarshal(b, &n); e != nil {
+		return e
+	}
+	*d = Duration(n)
+	return nil
+}
 
 type Config struct {
 	HTTP        HTTP                `yaml:"http" toml:"http" json:"http"`
@@ -43,51 +57,105 @@ type Config struct {
 	Recovery    Recovery            `yaml:"recovery" toml:"recovery" json:"recovery"`
 }
 type HTTP struct {
-	Listen, PublicURL                                                       string
-	RequestTimeout, ReadTimeout, WriteTimeout, IdleTimeout, ShutdownTimeout Duration
+	Listen          string   `yaml:"listen" toml:"listen" json:"listen"`
+	PublicURL       string   `yaml:"public_url" toml:"public_url" json:"public_url"`
+	RequestTimeout  Duration `yaml:"request_timeout" toml:"request_timeout" json:"request_timeout"`
+	ReadTimeout     Duration `yaml:"read_timeout" toml:"read_timeout" json:"read_timeout"`
+	WriteTimeout    Duration `yaml:"write_timeout" toml:"write_timeout" json:"write_timeout"`
+	IdleTimeout     Duration `yaml:"idle_timeout" toml:"idle_timeout" json:"idle_timeout"`
+	ShutdownTimeout Duration `yaml:"shutdown_timeout" toml:"shutdown_timeout" json:"shutdown_timeout"`
 }
-type Database struct{ DSN string }
+type Database struct {
+	DSN string `yaml:"dsn" toml:"dsn" json:"dsn"`
+}
 type Jobs struct {
-	HeartbeatInterval, LeaseDuration, WorkerTimeout, MaxClaimWait Duration
-	MaxEvents, InlineResultBytes, MaxResultBytes, MaxAttempts     int
-	RetryBackoff, RetryMaxBackoff, RetryMaxElapsed                Duration
+	HeartbeatInterval Duration `yaml:"heartbeat_interval" toml:"heartbeat_interval" json:"heartbeat_interval"`
+	LeaseDuration     Duration `yaml:"lease_duration" toml:"lease_duration" json:"lease_duration"`
+	WorkerTimeout     Duration `yaml:"worker_timeout" toml:"worker_timeout" json:"worker_timeout"`
+	MaxClaimWait      Duration `yaml:"max_claim_wait" toml:"max_claim_wait" json:"max_claim_wait"`
+	MaxEvents         int      `yaml:"max_events" toml:"max_events" json:"max_events"`
+	InlineResultBytes int      `yaml:"inline_result_bytes" toml:"inline_result_bytes" json:"inline_result_bytes"`
+	MaxResultBytes    int      `yaml:"max_result_bytes" toml:"max_result_bytes" json:"max_result_bytes"`
+	MaxAttempts       int      `yaml:"max_attempts" toml:"max_attempts" json:"max_attempts"`
+	RetryBackoff      Duration `yaml:"retry_backoff" toml:"retry_backoff" json:"retry_backoff"`
+	RetryMaxBackoff   Duration `yaml:"retry_max_backoff" toml:"retry_max_backoff" json:"retry_max_backoff"`
+	RetryMaxElapsed   Duration `yaml:"retry_max_elapsed" toml:"retry_max_elapsed" json:"retry_max_elapsed"`
 }
 type Provider struct {
-	Type   string
-	Config map[string]string
+	Type   string            `yaml:"type" toml:"type" json:"type"`
+	Config map[string]string `yaml:"config" toml:"config" json:"config"`
 }
 type Pool struct {
-	Name, Provider, Image, Template, CPUClass, MemoryClass, Architecture, Region, BootstrapArtifact string
-	Capabilities                                                                                    []string
-	ExecutorKinds                                                                                   []string
-	Labels                                                                                          map[string]string
-	Environment                                                                                     map[string]string
-	BootstrapCommand                                                                                []string
-	MinReplicas, MaxReplicas, WorkerConcurrency                                                     int
-	IdleTTL, StartupTimeout, ScaleUpCooldown, ScaleDownCooldown, ScaleDownStabilize, MaxLifetime    Duration
-	Cost                                                                                            *float64
+	Name               string            `yaml:"name" toml:"name" json:"name"`
+	Provider           string            `yaml:"provider" toml:"provider" json:"provider"`
+	Image              string            `yaml:"image" toml:"image" json:"image"`
+	Template           string            `yaml:"template" toml:"template" json:"template"`
+	CPUClass           string            `yaml:"cpu_class" toml:"cpu_class" json:"cpu_class"`
+	MemoryClass        string            `yaml:"memory_class" toml:"memory_class" json:"memory_class"`
+	Architecture       string            `yaml:"architecture" toml:"architecture" json:"architecture"`
+	Region             string            `yaml:"region" toml:"region" json:"region"`
+	BootstrapArtifact  string            `yaml:"bootstrap_artifact" toml:"bootstrap_artifact" json:"bootstrap_artifact"`
+	Capabilities       []string          `yaml:"capabilities" toml:"capabilities" json:"capabilities"`
+	ExecutorKinds      []string          `yaml:"executor_kinds" toml:"executor_kinds" json:"executor_kinds"`
+	Labels             map[string]string `yaml:"labels" toml:"labels" json:"labels"`
+	Environment        map[string]string `yaml:"environment" toml:"environment" json:"environment"`
+	BootstrapCommand   []string          `yaml:"bootstrap_command" toml:"bootstrap_command" json:"bootstrap_command"`
+	MinReplicas        int               `yaml:"min_replicas" toml:"min_replicas" json:"min_replicas"`
+	MaxReplicas        int               `yaml:"max_replicas" toml:"max_replicas" json:"max_replicas"`
+	WorkerConcurrency  int               `yaml:"worker_concurrency" toml:"worker_concurrency" json:"worker_concurrency"`
+	IdleTTL            Duration          `yaml:"idle_ttl" toml:"idle_ttl" json:"idle_ttl"`
+	StartupTimeout     Duration          `yaml:"startup_timeout" toml:"startup_timeout" json:"startup_timeout"`
+	ScaleUpCooldown    Duration          `yaml:"scale_up_cooldown" toml:"scale_up_cooldown" json:"scale_up_cooldown"`
+	ScaleDownCooldown  Duration          `yaml:"scale_down_cooldown" toml:"scale_down_cooldown" json:"scale_down_cooldown"`
+	ScaleDownStabilize Duration          `yaml:"scale_down_stabilize" toml:"scale_down_stabilize" json:"scale_down_stabilize"`
+	MaxLifetime        Duration          `yaml:"max_lifetime" toml:"max_lifetime" json:"max_lifetime"`
+	Cost               *float64          `yaml:"cost" toml:"cost" json:"cost"`
 }
-type Secrets struct{ Environment map[string]map[string]string }
-type Artifacts struct{ Directory string }
+type Secrets struct {
+	Environment map[string]map[string]string `yaml:"environment" toml:"environment" json:"environment"`
+}
+type Artifacts struct {
+	Directory string `yaml:"directory" toml:"directory" json:"directory"`
+}
 type Auth struct {
-	Token                               string
-	TokenEnv                            string
-	InsecureLocal                       bool
-	BootstrapTokenTTL, WorkerSessionTTL Duration
+	Token             string   `yaml:"token" toml:"token" json:"token"`
+	TokenEnv          string   `yaml:"token_env" toml:"token_env" json:"token_env"`
+	InsecureLocal     bool     `yaml:"insecure_local" toml:"insecure_local" json:"insecure_local"`
+	BootstrapTokenTTL Duration `yaml:"bootstrap_token_ttl" toml:"bootstrap_token_ttl" json:"bootstrap_token_ttl"`
+	WorkerSessionTTL  Duration `yaml:"worker_session_ttl" toml:"worker_session_ttl" json:"worker_session_ttl"`
 }
 type TLS struct {
-	CertFile, KeyFile string
-	Required          bool
+	CertFile string `yaml:"cert_file" toml:"cert_file" json:"cert_file"`
+	KeyFile  string `yaml:"key_file" toml:"key_file" json:"key_file"`
+	Required bool   `yaml:"required" toml:"required" json:"required"`
 }
-type Telemetry struct{ Enabled, Metrics bool }
+type Telemetry struct {
+	Enabled bool `yaml:"enabled" toml:"enabled" json:"enabled"`
+	Metrics bool `yaml:"metrics" toml:"metrics" json:"metrics"`
+}
 type Controllers struct {
-	LeaseReaper, JobTimeouts, SessionExpiry, WorkerHealth, Reconciler, Reaper, Autoscaler Duration
-	WorkerSuspectAfter, WorkerDeadAfter, IdleAfter, DrainGrace, MaxLifetime               Duration
-	Orphans                                                                               string
-	OwnerLabel, OwnerValue                                                                string
-	MinimumWarm, MaxScaleUpPerRun, ProvisioningConcurrency, MaxTotalSandboxes             int
-	MaxSandboxesByProvider                                                                map[string]int
-	ProviderBackoffBase, ProviderBackoffMax                                               Duration
+	LeaseReaper             Duration       `yaml:"lease_reaper" toml:"lease_reaper" json:"lease_reaper"`
+	JobTimeouts             Duration       `yaml:"job_timeouts" toml:"job_timeouts" json:"job_timeouts"`
+	SessionExpiry           Duration       `yaml:"session_expiry" toml:"session_expiry" json:"session_expiry"`
+	WorkerHealth            Duration       `yaml:"worker_health" toml:"worker_health" json:"worker_health"`
+	Reconciler              Duration       `yaml:"reconciler" toml:"reconciler" json:"reconciler"`
+	Reaper                  Duration       `yaml:"reaper" toml:"reaper" json:"reaper"`
+	Autoscaler              Duration       `yaml:"autoscaler" toml:"autoscaler" json:"autoscaler"`
+	WorkerSuspectAfter      Duration       `yaml:"worker_suspect_after" toml:"worker_suspect_after" json:"worker_suspect_after"`
+	WorkerDeadAfter         Duration       `yaml:"worker_dead_after" toml:"worker_dead_after" json:"worker_dead_after"`
+	IdleAfter               Duration       `yaml:"idle_after" toml:"idle_after" json:"idle_after"`
+	DrainGrace              Duration       `yaml:"drain_grace" toml:"drain_grace" json:"drain_grace"`
+	MaxLifetime             Duration       `yaml:"max_lifetime" toml:"max_lifetime" json:"max_lifetime"`
+	Orphans                 string         `yaml:"orphans" toml:"orphans" json:"orphans"`
+	OwnerLabel              string         `yaml:"owner_label" toml:"owner_label" json:"owner_label"`
+	OwnerValue              string         `yaml:"owner_value" toml:"owner_value" json:"owner_value"`
+	MinimumWarm             int            `yaml:"minimum_warm" toml:"minimum_warm" json:"minimum_warm"`
+	MaxScaleUpPerRun        int            `yaml:"max_scale_up_per_run" toml:"max_scale_up_per_run" json:"max_scale_up_per_run"`
+	ProvisioningConcurrency int            `yaml:"provisioning_concurrency" toml:"provisioning_concurrency" json:"provisioning_concurrency"`
+	MaxTotalSandboxes       int            `yaml:"max_total_sandboxes" toml:"max_total_sandboxes" json:"max_total_sandboxes"`
+	MaxSandboxesByProvider  map[string]int `yaml:"max_sandboxes_by_provider" toml:"max_sandboxes_by_provider" json:"max_sandboxes_by_provider"`
+	ProviderBackoffBase     Duration       `yaml:"provider_backoff_base" toml:"provider_backoff_base" json:"provider_backoff_base"`
+	ProviderBackoffMax      Duration       `yaml:"provider_backoff_max" toml:"provider_backoff_max" json:"provider_backoff_max"`
 }
 type Recovery struct {
 	CheckpointDirectory string   `yaml:"checkpoint_directory" toml:"checkpoint_directory" json:"checkpoint_directory"`
@@ -119,9 +187,20 @@ func Load(path string) (Config, error) {
 		}
 		switch {
 		case strings.HasSuffix(strings.ToLower(path), ".toml"):
-			_, e = toml.Decode(string(b), &c)
+			var md toml.MetaData
+			if md, e = toml.Decode(string(b), &c); e == nil && len(md.Undecoded()) > 0 {
+				undecoded := make([]string, len(md.Undecoded()))
+				for i, k := range md.Undecoded() {
+					undecoded[i] = k.String()
+				}
+				e = fmt.Errorf("unknown configuration field(s): %s", strings.Join(undecoded, ", "))
+			}
 		default:
-			e = yaml.Unmarshal(b, &c)
+			decoder := yaml.NewDecoder(bytes.NewReader(b))
+			decoder.KnownFields(true)
+			if e = decoder.Decode(&c); errors.Is(e, io.EOF) {
+				e = nil
+			}
 		}
 		if e != nil {
 			return c, fmt.Errorf("decode config: %w", e)
