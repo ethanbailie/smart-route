@@ -26,8 +26,7 @@ func TestClientAgainstAPI(t *testing.T) {
 		t.Fatal(err)
 	}
 	ctx := context.Background()
-	upstream := "model-a"
-	request := SubmitJob{IdempotencyKey: "stable-key", Kind: "generic", Payload: json.RawMessage(`{"task":"run"}`), Constraints: Constraints{Capabilities: []string{"gpu"}, Labels: map[string]string{"pool": "main"}, Upstream: &upstream}, TimeoutSeconds: 60, Retry: Retry{MaxAttempts: 2}}
+	request := SubmitJob{IdempotencyKey: "stable-key", Kind: "generic", Payload: json.RawMessage(`{"task":"run"}`), Constraints: Constraints{Capabilities: []string{"gpu"}, Labels: map[string]string{"pool": "main"}}, TimeoutSeconds: 60, Retry: Retry{MaxAttempts: 2}}
 	first, err := client.SubmitJob(ctx, request)
 	if err != nil {
 		t.Fatal(err)

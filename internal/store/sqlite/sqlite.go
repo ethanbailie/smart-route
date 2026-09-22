@@ -316,15 +316,14 @@ func (s *DB) UpsertWorker(ctx context.Context, w domain.Worker) error {
 	a, _ := enc(w.ActiveAttempts)
 	m, _ := enc(w.SandboxMetadata)
 	h, _ := enc(w.Health)
-	u, _ := enc(w.UpstreamStatus)
-	_, e = s.db.ExecContext(ctx, `INSERT INTO workers(id,capabilities_json,last_seen_at,session_id,session_token_hash,worker_version,protocol_version,slots,active_attempts_json,sandbox_metadata_json,health_json,upstream_status_json,registered_at,instance_id,sandbox_id,sandbox_provider,max_concurrency,available_slots,session_expires_at,reserved_session_id,session_epoch) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET capabilities_json=excluded.capabilities_json,last_seen_at=excluded.last_seen_at,session_id=excluded.session_id,session_token_hash=excluded.session_token_hash,worker_version=excluded.worker_version,protocol_version=excluded.protocol_version,active_attempts_json=excluded.active_attempts_json,sandbox_metadata_json=excluded.sandbox_metadata_json,health_json=excluded.health_json,upstream_status_json=excluded.upstream_status_json,instance_id=excluded.instance_id,sandbox_id=excluded.sandbox_id,sandbox_provider=excluded.sandbox_provider,max_concurrency=excluded.max_concurrency,available_slots=excluded.available_slots,session_expires_at=excluded.session_expires_at,reserved_session_id=excluded.reserved_session_id,session_epoch=excluded.session_epoch`, w.ID, c, w.LastSeenAt.UTC(), w.SessionID, w.SessionTokenHash, w.WorkerVersion, w.ProtocolVersion, w.MaxConcurrency, a, m, h, u, nullTime(w.RegisteredAt), w.InstanceID, w.SandboxID, w.SandboxProvider, w.MaxConcurrency, w.AvailableSlots, nullTime(w.SessionExpiresAt), w.ReservedSessionID, w.SessionEpoch)
+	_, e = s.db.ExecContext(ctx, `INSERT INTO workers(id,capabilities_json,last_seen_at,session_id,session_token_hash,worker_version,protocol_version,slots,active_attempts_json,sandbox_metadata_json,health_json,registered_at,instance_id,sandbox_id,sandbox_provider,max_concurrency,available_slots,session_expires_at,reserved_session_id,session_epoch) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET capabilities_json=excluded.capabilities_json,last_seen_at=excluded.last_seen_at,session_id=excluded.session_id,session_token_hash=excluded.session_token_hash,worker_version=excluded.worker_version,protocol_version=excluded.protocol_version,active_attempts_json=excluded.active_attempts_json,sandbox_metadata_json=excluded.sandbox_metadata_json,health_json=excluded.health_json,instance_id=excluded.instance_id,sandbox_id=excluded.sandbox_id,sandbox_provider=excluded.sandbox_provider,max_concurrency=excluded.max_concurrency,available_slots=excluded.available_slots,session_expires_at=excluded.session_expires_at,reserved_session_id=excluded.reserved_session_id,session_epoch=excluded.session_epoch`, w.ID, c, w.LastSeenAt.UTC(), w.SessionID, w.SessionTokenHash, w.WorkerVersion, w.ProtocolVersion, w.MaxConcurrency, a, m, h, nullTime(w.RegisteredAt), w.InstanceID, w.SandboxID, w.SandboxProvider, w.MaxConcurrency, w.AvailableSlots, nullTime(w.SessionExpiresAt), w.ReservedSessionID, w.SessionEpoch)
 	return e
 }
 func (s *DB) GetWorker(ctx context.Context, id domain.WorkerID) (domain.Worker, error) {
 	var w domain.Worker
-	var c, a, m, h, u string
+	var c, a, m, h string
 	var registered, sessionExpires sql.NullTime
-	e := s.db.QueryRowContext(ctx, `SELECT id,capabilities_json,last_seen_at,session_id,session_token_hash,worker_version,protocol_version,active_attempts_json,sandbox_metadata_json,health_json,upstream_status_json,registered_at,instance_id,sandbox_id,sandbox_provider,max_concurrency,available_slots,session_expires_at,reserved_session_id,session_epoch FROM workers WHERE id=?`, id).Scan(&w.ID, &c, &w.LastSeenAt, &w.SessionID, &w.SessionTokenHash, &w.WorkerVersion, &w.ProtocolVersion, &a, &m, &h, &u, &registered, &w.InstanceID, &w.SandboxID, &w.SandboxProvider, &w.MaxConcurrency, &w.AvailableSlots, &sessionExpires, &w.ReservedSessionID, &w.SessionEpoch)
+	e := s.db.QueryRowContext(ctx, `SELECT id,capabilities_json,last_seen_at,session_id,session_token_hash,worker_version,protocol_version,active_attempts_json,sandbox_metadata_json,health_json,registered_at,instance_id,sandbox_id,sandbox_provider,max_concurrency,available_slots,session_expires_at,reserved_session_id,session_epoch FROM workers WHERE id=?`, id).Scan(&w.ID, &c, &w.LastSeenAt, &w.SessionID, &w.SessionTokenHash, &w.WorkerVersion, &w.ProtocolVersion, &a, &m, &h, &registered, &w.InstanceID, &w.SandboxID, &w.SandboxProvider, &w.MaxConcurrency, &w.AvailableSlots, &sessionExpires, &w.ReservedSessionID, &w.SessionEpoch)
 	if e != nil {
 		return w, mapErr(e)
 	}
@@ -346,8 +345,7 @@ func (s *DB) GetWorker(ctx context.Context, id domain.WorkerID) (domain.Worker, 
 	if e = dec(h, &w.Health); e != nil {
 		return w, e
 	}
-	e = dec(u, &w.UpstreamStatus)
-	return w, e
+	return w, nil
 }
 func (s *DB) GetWorkerByInstanceID(ctx context.Context, instanceID string) (domain.Worker, error) {
 	var id domain.WorkerID

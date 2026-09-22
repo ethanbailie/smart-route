@@ -103,7 +103,7 @@ func TestWorkerProtocolLifecycle(t *testing.T) {
 	attemptID := attempt["id"].(string)
 	jobID := claim["job"].(map[string]any)["id"].(string)
 
-	heartbeat := workerRequest(t, client, http.MethodPost, server.URL+"/v1/worker/heartbeat", worker, token, `{"active_attempts":["`+attemptID+`"],"available_slots":0,"sandbox_metadata":{"runtime":"docker"},"health":{"status":"ok"},"upstreams":{"origin":"healthy"}}`)
+	heartbeat := workerRequest(t, client, http.MethodPost, server.URL+"/v1/worker/heartbeat", worker, token, `{"active_attempts":["`+attemptID+`"],"available_slots":0,"sandbox_metadata":{"runtime":"docker"},"health":{"status":"ok"}}`)
 	if heartbeat.StatusCode != http.StatusOK {
 		t.Fatalf("heartbeat status = %d", heartbeat.StatusCode)
 	}

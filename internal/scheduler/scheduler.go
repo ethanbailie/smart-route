@@ -12,19 +12,15 @@ import (
 type ReasonCode string
 
 const (
-	ReasonCapability       ReasonCode = "capability_mismatch"
-	ReasonExecutor         ReasonCode = "executor_mismatch"
-	ReasonLabels           ReasonCode = "label_mismatch"
-	ReasonArchitecture     ReasonCode = "architecture_mismatch"
-	ReasonRegion           ReasonCode = "region_mismatch"
-	ReasonWorkerHealth     ReasonCode = "worker_unhealthy"
-	ReasonConcurrency      ReasonCode = "concurrency_exhausted"
-	ReasonSandbox          ReasonCode = "sandbox_unavailable"
-	ReasonUpstream         ReasonCode = "upstream_unavailable"
-	ReasonUpstreamCooldown ReasonCode = "upstream_cooldown"
-	ReasonUpstreamBudget   ReasonCode = "upstream_budget_exhausted"
-	ReasonCost             ReasonCode = "cost_exceeded"
-	ReasonSelected         ReasonCode = "selected"
+	ReasonCapability   ReasonCode = "capability_mismatch"
+	ReasonExecutor     ReasonCode = "executor_mismatch"
+	ReasonLabels       ReasonCode = "label_mismatch"
+	ReasonArchitecture ReasonCode = "architecture_mismatch"
+	ReasonRegion       ReasonCode = "region_mismatch"
+	ReasonWorkerHealth ReasonCode = "worker_unhealthy"
+	ReasonConcurrency  ReasonCode = "concurrency_exhausted"
+	ReasonSandbox      ReasonCode = "sandbox_unavailable"
+	ReasonSelected     ReasonCode = "selected"
 )
 
 type Decision struct {
@@ -39,7 +35,7 @@ type ObserverFunc func(Decision)
 
 func (f ObserverFunc) ObserveSchedulingDecision(d Decision) { f(d) }
 
-type Weights struct{ ExactMatch, PreferredRegion, SandboxAffinity, ProviderAffinity, UpstreamHealth, WorkerLoad, QueueAge, Starvation, Cost float64 }
+type Weights struct{ ExactMatch, PreferredRegion, SandboxAffinity, ProviderAffinity, WorkerLoad, QueueAge, Starvation float64 }
 type Config struct {
 	Weights         Weights
 	StarvationAfter time.Duration
@@ -58,7 +54,7 @@ type Policy struct{ config Config }
 
 func New(config Config) *Policy {
 	if config.Weights == (Weights{}) {
-		config.Weights = Weights{ExactMatch: 20, PreferredRegion: 12, SandboxAffinity: 8, ProviderAffinity: 6, UpstreamHealth: 5, WorkerLoad: 5, QueueAge: 1, Starvation: 30, Cost: 1}
+		config.Weights = Weights{ExactMatch: 20, PreferredRegion: 12, SandboxAffinity: 8, ProviderAffinity: 6, WorkerLoad: 5, QueueAge: 1, Starvation: 30}
 	}
 	if config.StarvationAfter <= 0 {
 		config.StarvationAfter = 5 * time.Minute
@@ -134,27 +130,6 @@ func eligible(j domain.Job, r Request) ReasonCode {
 	if c.Region != "" && (w.Capabilities.Region != c.Region || r.Sandbox.Capabilities.Region != c.Region) {
 		return ReasonRegion
 	}
-	if c.RequiredUpstream != "" {
-		if !has(w.Capabilities.Upstreams, c.RequiredUpstream) || !has(r.Sandbox.Capabilities.Upstreams, c.RequiredUpstream) {
-			return ReasonUpstream
-		}
-		u, ok := w.UpstreamStatus[c.RequiredUpstream]
-		if !ok || u.State == domain.UpstreamUnavailable || u.State == "" {
-			return ReasonUpstream
-		}
-		if u.State == domain.UpstreamCooldown || (!u.CooldownUntil.IsZero() && r.Now.Before(u.CooldownUntil)) {
-			return ReasonUpstreamCooldown
-		}
-		if u.State != domain.UpstreamAvailable {
-			return ReasonUpstream
-		}
-		if u.BudgetRemaining != nil && *u.BudgetRemaining <= 0 {
-			return ReasonUpstreamBudget
-		}
-		if c.MaxCost != nil && u.Cost != nil && *u.Cost > *c.MaxCost {
-			return ReasonCost
-		}
-	}
 	return ""
 }
 func (p *Policy) score(j domain.Job, r Request) float64 {
@@ -172,9 +147,6 @@ func (p *Policy) score(j domain.Job, r Request) float64 {
 	if c.PreferredProvider != "" && c.PreferredProvider == w.SandboxProvider {
 		s += weights.ProviderAffinity
 	}
-	if c.RequiredUpstream != "" {
-		s += weights.UpstreamHealth * w.UpstreamStatus[c.RequiredUpstream].Health
-	}
 	if w.MaxConcurrency > 0 {
 		s += weights.WorkerLoad * float64(w.MaxConcurrency-r.Active) / float64(w.MaxConcurrency)
 	}
@@ -184,11 +156,6 @@ func (p *Policy) score(j domain.Job, r Request) float64 {
 	}
 	if age >= p.config.StarvationAfter {
 		s += weights.Starvation
-	}
-	if c.RequiredUpstream != "" {
-		if cost := w.UpstreamStatus[c.RequiredUpstream].Cost; cost != nil {
-			s -= weights.Cost * *cost
-		}
 	}
 	return s
 }

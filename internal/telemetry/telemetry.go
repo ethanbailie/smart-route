@@ -30,35 +30,32 @@ type Config struct {
 }
 
 type Telemetry struct {
-	enabled, tracing  bool
-	logger            *slog.Logger
-	gatherer          prometheus.Gatherer
-	tracer            trace.Tracer
-	requests          *prometheus.CounterVec
-	requestDuration   *prometheus.HistogramVec
-	jobs              *prometheus.CounterVec
-	queue             *prometheus.GaugeVec
-	queueWait         *prometheus.HistogramVec
-	attemptDuration   *prometheus.HistogramVec
-	workers           *prometheus.GaugeVec
-	sandboxes         *prometheus.GaugeVec
-	provisioning      *prometheus.CounterVec
-	provisionLatency  *prometheus.HistogramVec
-	leases            prometheus.Counter
-	activeLeases      prometheus.Gauge
-	heartbeats        *prometheus.CounterVec
-	heartbeatAge      prometheus.Gauge
-	claims            *prometheus.CounterVec
-	claimWait         *prometheus.HistogramVec
-	upstreams         *prometheus.GaugeVec
-	upstreamOutcomes  *prometheus.CounterVec
-	upstreamThrottles *prometheus.CounterVec
-	autoscaler        *prometheus.CounterVec
-	desired           *prometheus.GaugeVec
-	current           *prometheus.GaugeVec
-	cooldown          *prometheus.GaugeVec
-	mu                sync.RWMutex
-	pools             map[string]PoolStatus
+	enabled, tracing bool
+	logger           *slog.Logger
+	gatherer         prometheus.Gatherer
+	tracer           trace.Tracer
+	requests         *prometheus.CounterVec
+	requestDuration  *prometheus.HistogramVec
+	jobs             *prometheus.CounterVec
+	queue            *prometheus.GaugeVec
+	queueWait        *prometheus.HistogramVec
+	attemptDuration  *prometheus.HistogramVec
+	workers          *prometheus.GaugeVec
+	sandboxes        *prometheus.GaugeVec
+	provisioning     *prometheus.CounterVec
+	provisionLatency *prometheus.HistogramVec
+	leases           prometheus.Counter
+	activeLeases     prometheus.Gauge
+	heartbeats       *prometheus.CounterVec
+	heartbeatAge     prometheus.Gauge
+	claims           *prometheus.CounterVec
+	claimWait        *prometheus.HistogramVec
+	autoscaler       *prometheus.CounterVec
+	desired          *prometheus.GaugeVec
+	current          *prometheus.GaugeVec
+	cooldown         *prometheus.GaugeVec
+	mu               sync.RWMutex
+	pools            map[string]PoolStatus
 }
 
 type PoolStatus struct {
@@ -108,14 +105,11 @@ func New(c Config) *Telemetry {
 	t.heartbeatAge = prometheus.NewGauge(prometheus.GaugeOpts{Name: "smart_route_heartbeat_age_seconds", Help: "Age of the stalest worker heartbeat."})
 	t.claims = prometheus.NewCounterVec(prometheus.CounterOpts{Name: "smart_route_claims_total", Help: "Worker claim outcomes."}, []string{"result"})
 	t.claimWait = prometheus.NewHistogramVec(prometheus.HistogramOpts{Name: "smart_route_claim_wait_seconds", Help: "Long-poll claim duration."}, []string{"result"})
-	t.upstreams = prometheus.NewGaugeVec(prometheus.GaugeOpts{Name: "smart_route_upstreams", Help: "Upstream health."}, []string{"upstream", "state"})
-	t.upstreamOutcomes = prometheus.NewCounterVec(prometheus.CounterOpts{Name: "smart_route_upstream_requests_total", Help: "Upstream call outcomes."}, []string{"upstream", "outcome"})
-	t.upstreamThrottles = prometheus.NewCounterVec(prometheus.CounterOpts{Name: "smart_route_upstream_throttles_total", Help: "Upstream throttle events."}, []string{"upstream"})
 	t.autoscaler = prometheus.NewCounterVec(prometheus.CounterOpts{Name: "smart_route_autoscaler_decisions_total", Help: "Autoscaler decisions."}, []string{"pool", "action", "reason"})
 	t.desired = prometheus.NewGaugeVec(prometheus.GaugeOpts{Name: "smart_route_pool_desired", Help: "Desired pool size."}, []string{"pool"})
 	t.current = prometheus.NewGaugeVec(prometheus.GaugeOpts{Name: "smart_route_pool_current", Help: "Current pool size."}, []string{"pool"})
 	t.cooldown = prometheus.NewGaugeVec(prometheus.GaugeOpts{Name: "smart_route_pool_cooldown", Help: "Whether pool cooldown/backoff is active."}, []string{"pool"})
-	r.MustRegister(t.requests, t.requestDuration, t.jobs, t.queue, t.queueWait, t.attemptDuration, t.workers, t.sandboxes, t.provisioning, t.provisionLatency, t.leases, t.activeLeases, t.heartbeats, t.heartbeatAge, t.claims, t.claimWait, t.upstreams, t.upstreamOutcomes, t.upstreamThrottles, t.autoscaler, t.desired, t.current, t.cooldown)
+	r.MustRegister(t.requests, t.requestDuration, t.jobs, t.queue, t.queueWait, t.attemptDuration, t.workers, t.sandboxes, t.provisioning, t.provisionLatency, t.leases, t.activeLeases, t.heartbeats, t.heartbeatAge, t.claims, t.claimWait, t.autoscaler, t.desired, t.current, t.cooldown)
 	return t
 }
 
@@ -299,14 +293,6 @@ func (t *Telemetry) Provision(provider, result string, d time.Duration) {
 		t.provisionLatency.WithLabelValues(provider).Observe(d.Seconds())
 	}
 }
-func (t *Telemetry) UpstreamCall(name, outcome string, throttled bool) {
-	if t != nil && t.upstreamOutcomes != nil {
-		t.upstreamOutcomes.WithLabelValues(name, outcome).Inc()
-		if throttled {
-			t.upstreamThrottles.WithLabelValues(name).Inc()
-		}
-	}
-}
 func (t *Telemetry) HeartbeatAge(d time.Duration) {
 	if t != nil && t.heartbeatAge != nil {
 		t.heartbeatAge.Set(d.Seconds())
@@ -332,12 +318,6 @@ func (t *Telemetry) Sandbox(provider, pool, state string, value float64) {
 		t.sandboxes.WithLabelValues(provider, pool, state).Set(value)
 	}
 }
-func (t *Telemetry) Upstream(name, state string, value float64) {
-	if t != nil && t.upstreams != nil {
-		t.upstreams.WithLabelValues(name, state).Set(value)
-	}
-}
-
 func normalizeReason(v string) string {
 	switch {
 	case strings.Contains(v, "demand"):

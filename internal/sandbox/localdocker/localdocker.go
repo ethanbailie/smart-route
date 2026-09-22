@@ -113,7 +113,7 @@ func (p *Provider) Create(ctx context.Context, spec sandbox.CreateSpec) (sandbox
 	}
 	capabilities, _ := json.Marshal(spec.Capabilities)
 	workerLabels, _ := json.Marshal(spec.Capabilities.Labels)
-	args = append(args, "--env", "SMART_ROUTE_CAPABILITIES="+strings.Join(spec.Capabilities.Capabilities, ","), "--env", "SMART_ROUTE_LABELS="+string(workerLabels), "--env", "SMART_ROUTE_UPSTREAMS="+strings.Join(spec.Capabilities.Upstreams, ","), "--env", "SMART_ROUTE_REGION="+spec.Capabilities.Region)
+	args = append(args, "--env", "SMART_ROUTE_CAPABILITIES="+strings.Join(spec.Capabilities.Capabilities, ","), "--env", "SMART_ROUTE_LABELS="+string(workerLabels), "--env", "SMART_ROUTE_REGION="+spec.Capabilities.Region)
 	labels, _ := json.Marshal(spec.Labels)
 	args = append(args, "--label", capabilitiesLabel+"="+string(capabilities), "--label", labelsLabel+"="+string(labels))
 	if spec.Template != "" {

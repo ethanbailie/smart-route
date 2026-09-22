@@ -11,7 +11,6 @@ type WorkerID string
 type SandboxID string
 type LeaseID string
 type EventID string
-type UpstreamID string
 type CredentialRefID string
 type SessionID string
 
@@ -179,7 +178,6 @@ type Capabilities struct {
 	Architecture  Architecture
 	Region        string
 	ExecutorKinds []ExecutorKind
-	Upstreams     []string
 }
 
 // RoutingConstraints describe the capabilities required to execute a job.
@@ -189,28 +187,10 @@ type RoutingConstraints struct {
 	Architecture      Architecture
 	Region            string
 	ExecutorKind      ExecutorKind
-	RequiredUpstream  string
 	PreferredRegion   string
 	PreferredSandbox  SandboxID
 	PreferredProvider string
 	MaxCost           *float64
-}
-
-type UpstreamAvailability string
-
-const (
-	UpstreamAvailable   UpstreamAvailability = "available"
-	UpstreamUnavailable UpstreamAvailability = "unavailable"
-	UpstreamCooldown    UpstreamAvailability = "cooldown"
-)
-
-type UpstreamState struct {
-	State           UpstreamAvailability `json:"state"`
-	Health          float64              `json:"health,omitempty"`
-	CooldownUntil   time.Time            `json:"cooldown_until,omitempty"`
-	BudgetRemaining *float64             `json:"budget_remaining,omitempty"`
-	Cost            *float64             `json:"cost,omitempty"`
-	Metadata        map[string]string    `json:"metadata,omitempty"`
 }
 
 func (c Capabilities) Satisfies(required RoutingConstraints) bool {
@@ -226,9 +206,6 @@ func (c Capabilities) Satisfies(required RoutingConstraints) bool {
 		return false
 	}
 	if required.ExecutorKind != "" && !contains(c.ExecutorKinds, required.ExecutorKind) {
-		return false
-	}
-	if required.RequiredUpstream != "" && !contains(c.Upstreams, required.RequiredUpstream) {
 		return false
 	}
 	for key, value := range required.Labels {
@@ -310,7 +287,6 @@ type Worker struct {
 	ActiveAttempts    []AttemptID
 	SandboxMetadata   map[string]string
 	Health            map[string]string
-	UpstreamStatus    map[string]UpstreamState
 	RegisteredAt      time.Time
 	LastSeenAt        time.Time
 }
@@ -334,13 +310,6 @@ type Sandbox struct {
 	UpdatedAt         time.Time
 	DrainAt           time.Time
 	ReservedSessionID SessionID
-}
-
-type Upstream struct {
-	ID       UpstreamID
-	Name     string
-	URL      string
-	Metadata map[string]string
 }
 
 // CredentialRef contains locator metadata only; secrets are never persisted.

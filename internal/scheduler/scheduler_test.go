@@ -9,13 +9,12 @@ import (
 
 func TestPolicyEligibilityAndRanking(t *testing.T) {
 	now := time.Date(2026, 9, 3, 12, 0, 0, 0, time.UTC)
-	budget := 0.0
 	base := Request{
 		Now:     now,
-		Worker:  domain.Worker{ID: "worker", SandboxID: "sandbox", SandboxProvider: "docker", MaxConcurrency: 2, AvailableSlots: 2, Health: map[string]string{"status": "healthy"}, Capabilities: domain.Capabilities{Capabilities: []string{"build"}, Labels: map[string]string{"pool": "main"}, Architecture: domain.ArchitectureAMD64, Region: "west", ExecutorKinds: []domain.ExecutorKind{domain.ExecutorCommand}, Upstreams: []string{"origin"}}, UpstreamStatus: map[string]domain.UpstreamState{"origin": {State: domain.UpstreamAvailable, Health: 1}}},
-		Sandbox: domain.Sandbox{ID: "sandbox", WorkerID: "worker", State: "ready", Capabilities: domain.Capabilities{Capabilities: []string{"build"}, Labels: map[string]string{"pool": "main"}, Architecture: domain.ArchitectureAMD64, Region: "west", ExecutorKinds: []domain.ExecutorKind{domain.ExecutorCommand}, Upstreams: []string{"origin"}}},
+		Worker:  domain.Worker{ID: "worker", SandboxID: "sandbox", SandboxProvider: "docker", MaxConcurrency: 2, AvailableSlots: 2, Health: map[string]string{"status": "healthy"}, Capabilities: domain.Capabilities{Capabilities: []string{"build"}, Labels: map[string]string{"pool": "main"}, Architecture: domain.ArchitectureAMD64, Region: "west", ExecutorKinds: []domain.ExecutorKind{domain.ExecutorCommand}}},
+		Sandbox: domain.Sandbox{ID: "sandbox", WorkerID: "worker", State: "ready", Capabilities: domain.Capabilities{Capabilities: []string{"build"}, Labels: map[string]string{"pool": "main"}, Architecture: domain.ArchitectureAMD64, Region: "west", ExecutorKinds: []domain.ExecutorKind{domain.ExecutorCommand}}},
 	}
-	constraint := domain.RoutingConstraints{Capabilities: []string{"build"}, Labels: map[string]string{"pool": "main"}, Architecture: domain.ArchitectureAMD64, Region: "west", ExecutorKind: domain.ExecutorCommand, RequiredUpstream: "origin"}
+	constraint := domain.RoutingConstraints{Capabilities: []string{"build"}, Labels: map[string]string{"pool": "main"}, Architecture: domain.ArchitectureAMD64, Region: "west", ExecutorKind: domain.ExecutorCommand}
 	tests := []struct {
 		name   string
 		mutate func(*Request, *domain.RoutingConstraints)
@@ -28,18 +27,11 @@ func TestPolicyEligibilityAndRanking(t *testing.T) {
 		{"region", func(_ *Request, c *domain.RoutingConstraints) { c.Region = "east" }, ReasonRegion},
 		{"health", func(r *Request, _ *domain.RoutingConstraints) { r.Worker.Health["status"] = "unhealthy" }, ReasonWorkerHealth},
 		{"concurrency", func(r *Request, _ *domain.RoutingConstraints) { r.Active = 2 }, ReasonConcurrency},
-		{"upstream cooldown", func(r *Request, _ *domain.RoutingConstraints) {
-			r.Worker.UpstreamStatus["origin"] = domain.UpstreamState{State: domain.UpstreamCooldown}
-		}, ReasonUpstreamCooldown},
-		{"upstream budget", func(r *Request, _ *domain.RoutingConstraints) {
-			r.Worker.UpstreamStatus["origin"] = domain.UpstreamState{State: domain.UpstreamAvailable, BudgetRemaining: &budget}
-		}, ReasonUpstreamBudget},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			r := base
 			r.Worker.Health = map[string]string{"status": "healthy"}
-			r.Worker.UpstreamStatus = map[string]domain.UpstreamState{"origin": {State: domain.UpstreamAvailable, Health: 1}}
 			c := constraint
 			c.Labels = map[string]string{"pool": "main"}
 			tt.mutate(&r, &c)

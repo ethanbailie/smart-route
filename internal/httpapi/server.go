@@ -114,7 +114,6 @@ type Retry struct {
 type Constraints struct {
 	Capabilities      []string          `json:"capabilities"`
 	Labels            map[string]string `json:"labels"`
-	Upstream          *string           `json:"upstream"`
 	Architecture      string            `json:"architecture,omitempty"`
 	Region            string            `json:"region,omitempty"`
 	ExecutorKind      string            `json:"executor_kind,omitempty"`
@@ -438,10 +437,6 @@ func (a *API) submit(w http.ResponseWriter, r *http.Request) {
 	write(w, status, dataEnvelope{jobDTO(got)})
 }
 func requestJob(r SubmitJob, now time.Time) domain.Job {
-	up := ""
-	if r.Constraints.Upstream != nil {
-		up = *r.Constraints.Upstream
-	}
 	max := r.Retry.MaxAttempts
 	if max == 0 {
 		max = 1
@@ -450,7 +445,7 @@ func requestJob(r SubmitJob, now time.Time) domain.Job {
 	for i, v := range r.DependsOn {
 		deps[i] = domain.JobID(v)
 	}
-	j := domain.Job{ID: domain.JobID(newID("job")), IdempotencyKey: r.IdempotencyKey, Kind: r.Kind, Payload: r.Payload, State: domain.JobQueued, SessionID: domain.SessionID(r.SessionID), DependsOn: deps, Constraints: domain.RoutingConstraints{Capabilities: r.Constraints.Capabilities, Labels: r.Constraints.Labels, Architecture: domain.Architecture(r.Constraints.Architecture), Region: r.Constraints.Region, ExecutorKind: domain.ExecutorKind(r.Constraints.ExecutorKind), RequiredUpstream: up, PreferredRegion: r.Constraints.PreferredRegion, PreferredSandbox: domain.SandboxID(r.Constraints.PreferredSandbox), PreferredProvider: r.Constraints.PreferredProvider, MaxCost: r.Constraints.MaxCost}, RetryPolicy: domain.RetryPolicy{MaxAttempts: max, Backoff: time.Duration(r.Retry.Backoff), MaxBackoff: time.Duration(r.Retry.MaxBackoff), MaxElapsed: time.Duration(r.Retry.MaxElapsed)}, CreatedAt: now, UpdatedAt: now}
+	j := domain.Job{ID: domain.JobID(newID("job")), IdempotencyKey: r.IdempotencyKey, Kind: r.Kind, Payload: r.Payload, State: domain.JobQueued, SessionID: domain.SessionID(r.SessionID), DependsOn: deps, Constraints: domain.RoutingConstraints{Capabilities: r.Constraints.Capabilities, Labels: r.Constraints.Labels, Architecture: domain.Architecture(r.Constraints.Architecture), Region: r.Constraints.Region, ExecutorKind: domain.ExecutorKind(r.Constraints.ExecutorKind), PreferredRegion: r.Constraints.PreferredRegion, PreferredSandbox: domain.SandboxID(r.Constraints.PreferredSandbox), PreferredProvider: r.Constraints.PreferredProvider, MaxCost: r.Constraints.MaxCost}, RetryPolicy: domain.RetryPolicy{MaxAttempts: max, Backoff: time.Duration(r.Retry.Backoff), MaxBackoff: time.Duration(r.Retry.MaxBackoff), MaxElapsed: time.Duration(r.Retry.MaxElapsed)}, CreatedAt: now, UpdatedAt: now}
 	if r.TimeoutSeconds > 0 {
 		j.TimeoutAt = now.Add(time.Duration(r.TimeoutSeconds) * time.Second)
 	}
@@ -794,7 +789,6 @@ func (a *API) adminStatus(w http.ResponseWriter, r *http.Request) {
 	}
 	workerStates := map[string]int{}
 	maxHeartbeatAge := time.Duration(0)
-	upstreams := map[string]map[string]int{}
 	for _, x := range workers {
 		state := x.Health["status"]
 		if state == "" {
@@ -804,22 +798,11 @@ func (a *API) adminStatus(w http.ResponseWriter, r *http.Request) {
 		if age := time.Since(x.LastSeenAt); age > maxHeartbeatAge {
 			maxHeartbeatAge = age
 		}
-		for name, u := range x.UpstreamStatus {
-			if upstreams[name] == nil {
-				upstreams[name] = map[string]int{}
-			}
-			upstreams[name][string(u.State)]++
-		}
 	}
 	if a.telemetry != nil {
 		a.telemetry.HeartbeatAge(maxHeartbeatAge)
 		for state, count := range workerStates {
 			a.telemetry.WorkerHealth(state, float64(count))
-		}
-		for name, states := range upstreams {
-			for state, count := range states {
-				a.telemetry.Upstream(name, state, float64(count))
-			}
 		}
 	}
 	sandboxStates := map[string]int{}
@@ -843,7 +826,7 @@ func (a *API) adminStatus(w http.ResponseWriter, r *http.Request) {
 	if a.telemetry != nil {
 		pools = a.telemetry.PoolStatuses()
 	}
-	write(w, http.StatusOK, dataEnvelope{map[string]any{"queue": map[string]any{"depth": len(jobs), "oldest_queued_at": oldest}, "workers": workerStates, "sandboxes": sandboxStates, "pools": pools, "upstreams": upstreams}})
+	write(w, http.StatusOK, dataEnvelope{map[string]any{"queue": map[string]any{"depth": len(jobs), "oldest_queued_at": oldest}, "workers": workerStates, "sandboxes": sandboxStates, "pools": pools}})
 }
 
 func jobDTO(j domain.Job) Job {
@@ -852,12 +835,7 @@ func jobDTO(j domain.Job) Job {
 		x := j.TimeoutAt
 		at = &x
 	}
-	var up *string
-	if j.Constraints.RequiredUpstream != "" {
-		x := j.Constraints.RequiredUpstream
-		up = &x
-	}
-	constraints := Constraints{Capabilities: j.Constraints.Capabilities, Labels: j.Constraints.Labels, Upstream: up, Architecture: string(j.Constraints.Architecture), Region: j.Constraints.Region, ExecutorKind: string(j.Constraints.ExecutorKind), PreferredRegion: j.Constraints.PreferredRegion, PreferredSandbox: string(j.Constraints.PreferredSandbox), PreferredProvider: j.Constraints.PreferredProvider, MaxCost: j.Constraints.MaxCost}
+	constraints := Constraints{Capabilities: j.Constraints.Capabilities, Labels: j.Constraints.Labels, Architecture: string(j.Constraints.Architecture), Region: j.Constraints.Region, ExecutorKind: string(j.Constraints.ExecutorKind), PreferredRegion: j.Constraints.PreferredRegion, PreferredSandbox: string(j.Constraints.PreferredSandbox), PreferredProvider: j.Constraints.PreferredProvider, MaxCost: j.Constraints.MaxCost}
 	deps := make([]string, len(j.DependsOn))
 	for i, v := range j.DependsOn {
 		deps[i] = string(v)

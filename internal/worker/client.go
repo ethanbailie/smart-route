@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/ethanbailie/smart-route/internal/domain"
 	"io"
 	"net"
 	"net/http"
@@ -53,7 +52,7 @@ func (c *HTTPControlPlane) SetObserver(observer OperationObserver) {
 }
 
 func (c *HTTPControlPlane) Register(ctx context.Context, r RegistrationRequest) (Registration, error) {
-	body := map[string]any{"instance_id": r.InstanceID, "bootstrap_token": r.BootstrapToken, "sandbox_id": r.SandboxID, "sandbox_provider": r.SandboxProvider, "worker_version": r.Version, "protocol_version": "1", "max_concurrency": r.MaxConcurrency, "sandbox_metadata": r.SandboxMetadata, "capabilities": map[string]any{"capabilities": r.Capabilities.Capabilities, "labels": r.Capabilities.Labels, "architecture": r.Capabilities.Architecture, "region": r.Capabilities.Region, "executor_kinds": r.Capabilities.ExecutorKinds, "upstreams": r.Capabilities.Upstreams}}
+	body := map[string]any{"instance_id": r.InstanceID, "bootstrap_token": r.BootstrapToken, "sandbox_id": r.SandboxID, "sandbox_provider": r.SandboxProvider, "worker_version": r.Version, "protocol_version": "1", "max_concurrency": r.MaxConcurrency, "sandbox_metadata": r.SandboxMetadata, "capabilities": map[string]any{"capabilities": r.Capabilities.Capabilities, "labels": r.Capabilities.Labels, "architecture": r.Capabilities.Architecture, "region": r.Capabilities.Region, "executor_kinds": r.Capabilities.ExecutorKinds}}
 	var out struct {
 		WorkerID        string `json:"worker_id"`
 		Token           string `json:"session_token"`
@@ -77,18 +76,12 @@ func (c *HTTPControlPlane) AcknowledgeRecovery(ctx context.Context, id string, e
 func (c *HTTPControlPlane) ReportRecoveryFailure(ctx context.Context, id string, epoch uint64, message string) error {
 	return c.do(ctx, http.MethodPost, "/v1/worker/recovery/ack", map[string]any{"session_id": id, "epoch": epoch, "error": message}, nil, true)
 }
-func (c *HTTPControlPlane) Heartbeat(ctx context.Context, ids []string, slots int, metadata map[string]string, upstreams map[string]domain.UpstreamState) ([]string, error) {
+func (c *HTTPControlPlane) Heartbeat(ctx context.Context, ids []string, slots int, metadata map[string]string) ([]string, error) {
 	var out struct {
-		Token         string   `json:"session_token"`
 		Cancellations []string `json:"cancel_attempts"`
 	}
-	if err := c.do(ctx, http.MethodPost, "/v1/worker/heartbeat", map[string]any{"active_attempts": ids, "available_slots": slots, "sandbox_metadata": metadata, "health": map[string]string{"status": "ok"}, "upstreams": upstreams}, &out, true); err != nil {
+	if err := c.do(ctx, http.MethodPost, "/v1/worker/heartbeat", map[string]any{"active_attempts": ids, "available_slots": slots, "sandbox_metadata": metadata, "health": map[string]string{"status": "ok"}}, &out, true); err != nil {
 		return nil, err
-	}
-	if out.Token != "" {
-		c.mu.Lock()
-		c.token = out.Token
-		c.mu.Unlock()
 	}
 	return out.Cancellations, nil
 }

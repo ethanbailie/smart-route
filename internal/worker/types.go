@@ -81,7 +81,7 @@ type ControlPlane interface {
 	Register(context.Context, RegistrationRequest) (Registration, error)
 	AcknowledgeRecovery(context.Context, string, uint64) error
 	ReportRecoveryFailure(context.Context, string, uint64, string) error
-	Heartbeat(context.Context, []string, int, map[string]string, map[string]domain.UpstreamState) ([]string, error)
+	Heartbeat(context.Context, []string, int, map[string]string) ([]string, error)
 	Claim(context.Context, time.Duration) (*Claim, error)
 	Renew(context.Context, string) error
 	Event(context.Context, string, Event) error
