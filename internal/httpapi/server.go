@@ -56,6 +56,7 @@ type Config struct {
 }
 type API struct {
 	store                                                                  store.Store
+	mux                                                                    *http.ServeMux
 	timeout, heartbeatInterval, leaseDuration, workerTimeout, maxClaimWait time.Duration
 	bootstrapTokenTTL, workerSessionTTL                                    time.Duration
 	wake                                                                   chan struct{}
@@ -285,6 +286,7 @@ func New(s store.Store, c Config) *API {
 		api.publicAuth = true
 		api.publicTokenHash = sha256.Sum256([]byte(c.PublicAuthToken))
 	}
+	api.routes()
 	return api
 }
 func (a *API) Handler() http.Handler {
@@ -305,6 +307,47 @@ func Shutdown(ctx context.Context, s *http.Server, t time.Duration) error {
 	defer cancel()
 	return s.Shutdown(c)
 }
+func (a *API) routes() {
+	m := http.NewServeMux()
+	m.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
+		write(w, 200, dataEnvelope{map[string]string{"status": "ok"}})
+	})
+	m.HandleFunc("GET /readyz", func(w http.ResponseWriter, _ *http.Request) {
+		write(w, 200, dataEnvelope{map[string]string{"status": "ready"}})
+	})
+	m.HandleFunc("GET /versionz", func(w http.ResponseWriter, _ *http.Request) { write(w, 200, dataEnvelope{buildinfo.Current()}) })
+	if a.telemetry != nil {
+		if metrics := a.telemetry.MetricsHandler(); metrics != nil {
+			m.Handle("GET /metrics", metrics)
+		}
+	}
+	m.HandleFunc("POST /v1/jobs", a.submit)
+	m.HandleFunc("GET /v1/jobs/{id}", a.getJob)
+	m.HandleFunc("GET /v1/jobs/{id}/attempts", a.jobAttempts)
+	m.HandleFunc("GET /v1/jobs/{id}/events", a.jobEvents)
+	m.HandleFunc("GET /v1/jobs/{id}/result", a.jobResult)
+	m.HandleFunc("POST /v1/jobs/{id}/cancel", a.cancelJob)
+	m.HandleFunc("POST /v1/sessions", a.createSession)
+	m.HandleFunc("GET /v1/sessions/{id}", a.getSession)
+	m.HandleFunc("GET /v1/sessions/{id}/jobs", a.sessionJobs)
+	m.HandleFunc("GET /v1/sessions/{id}/checkpoints", a.listCheckpoints)
+	m.HandleFunc("POST /v1/sessions/{id}/checkpoints", a.postCheckpoint)
+	m.HandleFunc("GET /v1/sessions/{id}/recovery-events", a.recoveryEvents)
+	m.HandleFunc("POST /v1/sessions/{id}/close", a.closeSession)
+	m.HandleFunc("POST /v1/sessions/{id}/recover", a.recoverSession)
+	m.HandleFunc("POST /v1/worker/register", a.registerWorker)
+	m.HandleFunc("POST /v1/worker/heartbeat", a.heartbeatWorker)
+	m.HandleFunc("POST /v1/worker/recovery/ack", a.acknowledgeRecovery)
+	m.HandleFunc("GET /v1/worker/claim", a.claimWorker)
+	m.HandleFunc("POST /v1/worker/claim", a.claimWorker)
+	m.HandleFunc("POST /v1/worker/attempts/{id}/{action}", a.workerAttemptRoute)
+	m.HandleFunc("GET /v1/workers", a.workers)
+	m.HandleFunc("GET /v1/sandboxes", a.sandboxes)
+	m.HandleFunc("GET /v1/admin/status", a.adminStatus)
+	m.HandleFunc("/", func(w http.ResponseWriter, _ *http.Request) { fail(w, 404, CodeJobNotFound, "job not found") })
+	a.mux = m
+}
+
 func (a *API) serveHTTP(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	if r.TLS == nil && a.requireTLS {
@@ -323,49 +366,7 @@ func (a *API) serveHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	switch {
-	case r.Method == http.MethodGet && r.URL.Path == "/metrics" && a.telemetry != nil && a.telemetry.MetricsHandler() != nil:
-		a.telemetry.MetricsHandler().ServeHTTP(w, r)
-	case r.URL.Path == "/healthz":
-		write(w, 200, dataEnvelope{map[string]string{"status": "ok"}})
-	case r.URL.Path == "/readyz":
-		write(w, 200, dataEnvelope{map[string]string{"status": "ready"}})
-	case r.Method == http.MethodGet && r.URL.Path == "/versionz":
-		write(w, 200, dataEnvelope{buildinfo.Current()})
-	case r.Method == http.MethodPost && r.URL.Path == "/v1/jobs":
-		a.submit(w, r)
-	case r.Method == http.MethodPost && r.URL.Path == "/v1/sessions":
-		a.createSession(w, r)
-	case r.Method == http.MethodPost && r.URL.Path == "/v1/worker/register":
-		a.registerWorker(w, r)
-	case r.Method == http.MethodPost && r.URL.Path == "/v1/worker/heartbeat":
-		a.heartbeatWorker(w, r)
-	case r.Method == http.MethodPost && r.URL.Path == "/v1/worker/recovery/ack":
-		a.acknowledgeRecovery(w, r)
-	case (r.Method == http.MethodPost || r.Method == http.MethodGet) && r.URL.Path == "/v1/worker/claim":
-		a.claimWorker(w, r)
-	case r.Method == http.MethodGet && r.URL.Path == "/v1/workers":
-		a.workers(w, r)
-	case r.Method == http.MethodGet && r.URL.Path == "/v1/sandboxes":
-		a.sandboxes(w, r)
-	case r.Method == http.MethodGet && r.URL.Path == "/v1/admin/status":
-		a.adminStatus(w, r)
-	default:
-		p := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
-		if len(p) == 5 && p[0] == "v1" && p[1] == "worker" && p[2] == "attempts" && r.Method == http.MethodPost {
-			a.workerAttemptRoute(w, r, domain.AttemptID(p[3]), p[4])
-			return
-		}
-		if len(p) >= 3 && p[0] == "v1" && p[1] == "jobs" {
-			a.jobRoute(w, r, domain.JobID(p[2]), p[3:])
-			return
-		}
-		if len(p) >= 3 && p[0] == "v1" && p[1] == "sessions" {
-			a.sessionRoute(w, r, domain.SessionID(p[2]), p[3:])
-			return
-		}
-		fail(w, 404, CodeJobNotFound, "job not found")
-	}
+	a.mux.ServeHTTP(w, r)
 }
 func (a *API) submit(w http.ResponseWriter, r *http.Request) {
 	var req SubmitJob
@@ -504,90 +505,88 @@ func (a *API) createSession(w http.ResponseWriter, r *http.Request) {
 	}
 	write(w, 201, dataEnvelope{sessionDTO(v)})
 }
-func (a *API) sessionRoute(w http.ResponseWriter, r *http.Request, id domain.SessionID, rest []string) {
-	if len(rest) == 0 && r.Method == http.MethodGet {
-		v, e := a.store.GetSession(r.Context(), id)
-		if e != nil {
-			jobError(w, e)
-			return
-		}
-		write(w, 200, dataEnvelope{sessionDTO(v)})
+func (a *API) getSession(w http.ResponseWriter, r *http.Request) {
+	v, e := a.store.GetSession(r.Context(), domain.SessionID(r.PathValue("id")))
+	if e != nil {
+		jobError(w, e)
 		return
 	}
-	if len(rest) == 1 && rest[0] == "jobs" && r.Method == http.MethodGet {
-		xs, e := a.store.ListSessionJobs(r.Context(), id)
-		if e != nil {
-			jobError(w, e)
-			return
-		}
-		out := make([]Job, len(xs))
-		for i, v := range xs {
-			out[i] = jobDTO(v)
-		}
-		write(w, 200, dataEnvelope{out})
+	write(w, 200, dataEnvelope{sessionDTO(v)})
+}
+
+func (a *API) sessionJobs(w http.ResponseWriter, r *http.Request) {
+	xs, e := a.store.ListSessionJobs(r.Context(), domain.SessionID(r.PathValue("id")))
+	if e != nil {
+		jobError(w, e)
 		return
 	}
-	if len(rest) == 1 && rest[0] == "close" && r.Method == http.MethodPost {
-		if e := a.store.CloseSession(r.Context(), id, time.Now().UTC()); e != nil {
-			jobError(w, e)
-			return
-		}
-		v, e := a.store.GetSession(r.Context(), id)
-		if e != nil {
-			jobError(w, e)
-			return
-		}
-		write(w, 200, dataEnvelope{sessionDTO(v)})
+	out := make([]Job, len(xs))
+	for i, v := range xs {
+		out[i] = jobDTO(v)
+	}
+	write(w, 200, dataEnvelope{out})
+}
+
+func (a *API) closeSession(w http.ResponseWriter, r *http.Request) {
+	id := domain.SessionID(r.PathValue("id"))
+	if e := a.store.CloseSession(r.Context(), id, time.Now().UTC()); e != nil {
+		jobError(w, e)
 		return
 	}
-	if len(rest) == 1 && rest[0] == "recover" && r.Method == http.MethodPost {
-		if e := a.store.RequestRecovery(r.Context(), id, time.Now().UTC()); e != nil {
-			jobError(w, e)
-			return
-		}
-		v, e := a.store.GetSession(r.Context(), id)
-		if e != nil {
-			jobError(w, e)
-			return
-		}
-		write(w, 202, dataEnvelope{sessionDTO(v)})
+	v, e := a.store.GetSession(r.Context(), id)
+	if e != nil {
+		jobError(w, e)
 		return
 	}
-	if len(rest) == 1 && rest[0] == "checkpoints" && r.Method == http.MethodGet {
-		xs, e := a.store.ListCheckpoints(r.Context(), id)
-		if e != nil {
-			jobError(w, e)
-			return
-		}
-		write(w, 200, dataEnvelope{xs})
+	write(w, 200, dataEnvelope{sessionDTO(v)})
+}
+
+func (a *API) recoverSession(w http.ResponseWriter, r *http.Request) {
+	id := domain.SessionID(r.PathValue("id"))
+	if e := a.store.RequestRecovery(r.Context(), id, time.Now().UTC()); e != nil {
+		jobError(w, e)
 		return
 	}
-	if len(rest) == 1 && rest[0] == "recovery-events" && r.Method == http.MethodGet {
-		events, e := a.store.ListRecoveryEvents(r.Context(), id)
-		if e != nil {
-			jobError(w, e)
-			return
-		}
-		write(w, 200, dataEnvelope{events})
+	v, e := a.store.GetSession(r.Context(), id)
+	if e != nil {
+		jobError(w, e)
 		return
 	}
-	if len(rest) == 1 && rest[0] == "checkpoints" && r.Method == http.MethodPost {
-		var req struct {
-			Data  []byte `json:"data"`
-			Epoch uint64 `json:"epoch"`
-		}
-		if !decodeWorkerJSON(w, r, &req) {
-			return
-		}
-		cp, e := a.saveCheckpoint(r.Context(), id, req.Epoch, req.Data, time.Now().UTC())
-		if e != nil {
-			jobError(w, e)
-			return
-		}
-		write(w, 201, dataEnvelope{cp})
+	write(w, 202, dataEnvelope{sessionDTO(v)})
+}
+
+func (a *API) listCheckpoints(w http.ResponseWriter, r *http.Request) {
+	xs, e := a.store.ListCheckpoints(r.Context(), domain.SessionID(r.PathValue("id")))
+	if e != nil {
+		jobError(w, e)
 		return
 	}
-	fail(w, 404, CodeJobNotFound, "session not found")
+	write(w, 200, dataEnvelope{xs})
+}
+
+func (a *API) recoveryEvents(w http.ResponseWriter, r *http.Request) {
+	events, e := a.store.ListRecoveryEvents(r.Context(), domain.SessionID(r.PathValue("id")))
+	if e != nil {
+		jobError(w, e)
+		return
+	}
+	write(w, 200, dataEnvelope{events})
+}
+
+func (a *API) postCheckpoint(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Data  []byte `json:"data"`
+		Epoch uint64 `json:"epoch"`
+	}
+	if !decodeWorkerJSON(w, r, &req) {
+		return
+	}
+	cp, e := a.saveCheckpoint(r.Context(), domain.SessionID(r.PathValue("id")), req.Epoch, req.Data, time.Now().UTC())
+	if e != nil {
+		jobError(w, e)
+		return
+	}
+	write(w, 201, dataEnvelope{cp})
 }
 
 func (a *API) saveCheckpoint(ctx context.Context, id domain.SessionID, epoch uint64, data []byte, at time.Time) (domain.Checkpoint, error) {
@@ -648,104 +647,102 @@ func timeoutSeconds(j domain.Job) int64 {
 	}
 	return int64(j.TimeoutAt.Sub(j.CreatedAt) / time.Second)
 }
-func (a *API) jobRoute(w http.ResponseWriter, r *http.Request, id domain.JobID, rest []string) {
-	if len(rest) == 0 && r.Method == http.MethodGet {
-		j, e := a.store.GetJob(r.Context(), id)
-		if e != nil {
-			jobError(w, e)
-			return
-		}
-		write(w, 200, dataEnvelope{jobDTO(j)})
+func (a *API) getJob(w http.ResponseWriter, r *http.Request) {
+	j, e := a.store.GetJob(r.Context(), domain.JobID(r.PathValue("id")))
+	if e != nil {
+		jobError(w, e)
 		return
 	}
-	if len(rest) == 1 && rest[0] == "attempts" && r.Method == http.MethodGet {
-		j, e := a.store.GetJob(r.Context(), id)
-		if e != nil {
-			jobError(w, e)
-			return
-		}
-		out := make([]Attempt, len(j.Attempts))
-		for i, x := range j.Attempts {
-			out[i] = attemptDTO(x)
-		}
-		write(w, 200, dataEnvelope{out})
+	write(w, 200, dataEnvelope{jobDTO(j)})
+}
+
+func (a *API) jobAttempts(w http.ResponseWriter, r *http.Request) {
+	j, e := a.store.GetJob(r.Context(), domain.JobID(r.PathValue("id")))
+	if e != nil {
+		jobError(w, e)
 		return
 	}
-	if len(rest) == 1 && rest[0] == "events" && r.Method == http.MethodGet {
-		if _, e := a.store.GetJob(r.Context(), id); e != nil {
-			jobError(w, e)
-			return
-		}
-		after, e := strconv.ParseUint(r.URL.Query().Get("after"), 10, 64)
-		if r.URL.Query().Get("after") == "" {
-			after, e = 0, nil
-		}
-		if e != nil {
-			fail(w, 400, CodeInvalidRequest, "after must be a non-negative sequence")
-			return
-		}
-		limit := a.maxEvents
-		if raw := r.URL.Query().Get("limit"); raw != "" {
-			n, err := strconv.Atoi(raw)
-			if err != nil || n <= 0 {
-				fail(w, 400, CodeInvalidRequest, "limit must be positive")
-				return
-			}
-			if n < limit {
-				limit = n
-			}
-		}
-		xs, e := a.store.ListEvents(r.Context(), id, after, limit)
-		if e != nil {
-			jobError(w, e)
-			return
-		}
-		out := make([]Event, len(xs))
-		for i, x := range xs {
-			out[i] = eventDTO(x)
-		}
-		write(w, 200, dataEnvelope{out})
+	out := make([]Attempt, len(j.Attempts))
+	for i, x := range j.Attempts {
+		out[i] = attemptDTO(x)
+	}
+	write(w, 200, dataEnvelope{out})
+}
+
+func (a *API) jobEvents(w http.ResponseWriter, r *http.Request) {
+	id := domain.JobID(r.PathValue("id"))
+	if _, e := a.store.GetJob(r.Context(), id); e != nil {
+		jobError(w, e)
 		return
 	}
-	if len(rest) == 1 && rest[0] == "result" && r.Method == http.MethodGet {
-		result, e := a.store.GetResult(r.Context(), id)
-		if e != nil {
-			jobError(w, e)
-			return
-		}
-		if result.ArtifactKey != "" {
-			if a.artifacts == nil {
-				internal(w)
-				return
-			}
-			result.Data, e = a.artifacts.Get(r.Context(), result.ArtifactKey)
-			if e != nil {
-				internal(w)
-				return
-			}
-		}
-		write(w, 200, dataEnvelope{Result{string(result.JobID), string(result.AttemptID), result.StatusCode, result.Data, result.Metadata, result.CreatedAt}})
+	after, e := strconv.ParseUint(r.URL.Query().Get("after"), 10, 64)
+	if r.URL.Query().Get("after") == "" {
+		after, e = 0, nil
+	}
+	if e != nil {
+		fail(w, 400, CodeInvalidRequest, "after must be a non-negative sequence")
 		return
 	}
-	if len(rest) == 1 && rest[0] == "cancel" && r.Method == http.MethodPost {
-		e := a.store.CancelJob(r.Context(), id, time.Now().UTC())
-		if errors.Is(e, store.ErrConflict) {
-			fail(w, 409, CodeCanceledJob, "job can no longer be canceled")
+	limit := a.maxEvents
+	if raw := r.URL.Query().Get("limit"); raw != "" {
+		n, err := strconv.Atoi(raw)
+		if err != nil || n <= 0 {
+			fail(w, 400, CodeInvalidRequest, "limit must be positive")
 			return
 		}
-		if e != nil {
-			jobError(w, e)
-			return
+		if n < limit {
+			limit = n
 		}
-		j, e := a.store.GetJob(r.Context(), id)
-		if e != nil {
-			jobError(w, e)
-			return
-		}
-		write(w, 200, dataEnvelope{jobDTO(j)})
+	}
+	xs, e := a.store.ListEvents(r.Context(), id, after, limit)
+	if e != nil {
+		jobError(w, e)
 		return
 	}
-	fail(w, 404, CodeJobNotFound, "job not found")
+	out := make([]Event, len(xs))
+	for i, x := range xs {
+		out[i] = eventDTO(x)
+	}
+	write(w, 200, dataEnvelope{out})
+}
+
+func (a *API) jobResult(w http.ResponseWriter, r *http.Request) {
+	result, e := a.store.GetResult(r.Context(), domain.JobID(r.PathValue("id")))
+	if e != nil {
+		jobError(w, e)
+		return
+	}
+	if result.ArtifactKey != "" {
+		if a.artifacts == nil {
+			internal(w)
+			return
+		}
+		result.Data, e = a.artifacts.Get(r.Context(), result.ArtifactKey)
+		if e != nil {
+			internal(w)
+			return
+		}
+	}
+	write(w, 200, dataEnvelope{Result{string(result.JobID), string(result.AttemptID), result.StatusCode, result.Data, result.Metadata, result.CreatedAt}})
+}
+
+func (a *API) cancelJob(w http.ResponseWriter, r *http.Request) {
+	id := domain.JobID(r.PathValue("id"))
+	e := a.store.CancelJob(r.Context(), id, time.Now().UTC())
+	if errors.Is(e, store.ErrConflict) {
+		fail(w, 409, CodeCanceledJob, "job can no longer be canceled")
+		return
+	}
+	if e != nil {
+		jobError(w, e)
+		return
+	}
+	j, e := a.store.GetJob(r.Context(), id)
+	if e != nil {
+		jobError(w, e)
+		return
+	}
+	write(w, 200, dataEnvelope{jobDTO(j)})
 }
 func (a *API) workers(w http.ResponseWriter, r *http.Request) {
 	xs, e := a.store.ListWorkers(r.Context())

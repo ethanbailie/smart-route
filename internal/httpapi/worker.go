@@ -415,13 +415,14 @@ type failureRequest struct {
 	Class   domain.FailureClass `json:"class"`
 }
 
-func (a *API) workerAttemptRoute(w http.ResponseWriter, r *http.Request, id domain.AttemptID, action string) {
+func (a *API) workerAttemptRoute(w http.ResponseWriter, r *http.Request) {
 	worker, ok := a.authenticatedWorker(w, r)
 	if !ok {
 		return
 	}
+	id := domain.AttemptID(r.PathValue("id"))
 	now := time.Now().UTC()
-	switch action {
+	switch r.PathValue("action") {
 	case "renew":
 		var req renewRequest
 		if r.ContentLength != 0 && !decodeWorkerJSON(w, r, &req) {
