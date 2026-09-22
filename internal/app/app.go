@@ -38,7 +38,7 @@ func Build(c config.Config) (*Application, error) {
 	if e != nil {
 		return nil, fmt.Errorf("open database: %w", e)
 	}
-	tel := telemetry.New(telemetry.Config{Enabled: c.Telemetry.Enabled, Metrics: c.Telemetry.Metrics, Tracing: c.Telemetry.Tracing, Logger: slog.Default()})
+	tel := telemetry.New(telemetry.Config{Enabled: c.Telemetry.Enabled, Metrics: c.Telemetry.Metrics, Logger: slog.Default()})
 	providerConfig := make(map[string]sandbox.ProviderConfig, len(c.Providers))
 	for n, p := range c.Providers {
 		providerConfig[n] = sandbox.ProviderConfig{Type: p.Type, Config: p.Config}

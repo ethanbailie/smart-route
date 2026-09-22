@@ -79,7 +79,7 @@ type TLS struct {
 	CertFile, KeyFile string
 	Required          bool
 }
-type Telemetry struct{ Enabled, Metrics, Tracing bool }
+type Telemetry struct{ Enabled, Metrics bool }
 type Controllers struct {
 	LeaseReaper, JobTimeouts, SessionExpiry, WorkerHealth, Reconciler, Reaper, Autoscaler Duration
 	WorkerSuspectAfter, WorkerDeadAfter, IdleAfter, DrainGrace, MaxLifetime               Duration
