@@ -2,12 +2,9 @@
 package client
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"net/url"
 	"strings"
@@ -15,6 +12,7 @@ import (
 
 	"github.com/ethanbailie/smart-route/internal/domain"
 	"github.com/ethanbailie/smart-route/internal/httpapi"
+	"github.com/ethanbailie/smart-route/internal/httpjson"
 )
 
 type SubmitJob = httpapi.SubmitJob
@@ -41,15 +39,8 @@ const (
 	CodeInternalError                = httpapi.CodeInternalError
 )
 
-type APIError struct {
-	StatusCode int
-	Code       string
-	Message    string
-}
-
-func (e *APIError) Error() string {
-	return fmt.Sprintf("smart-route: %s (%d): %s", e.Code, e.StatusCode, e.Message)
-}
+// APIError is a non-2xx API failure decoded from the error envelope.
+type APIError = httpjson.Error
 
 type Client struct {
 	base *url.URL
@@ -177,51 +168,19 @@ func (c *Client) WaitTerminal(ctx context.Context, id string, interval time.Dura
 	}
 }
 func (c *Client) do(ctx context.Context, method, path string, body any, out any) error {
-	var reader io.Reader
-	if body != nil {
-		b, e := json.Marshal(body)
-		if e != nil {
-			return e
-		}
-		reader = bytes.NewReader(b)
-	}
 	u := *c.base
 	parts := strings.SplitN(path, "?", 2)
 	u.Path = strings.TrimRight(c.base.Path, "/") + parts[0]
 	if len(parts) == 2 {
 		u.RawQuery = parts[1]
 	}
-	req, e := http.NewRequestWithContext(ctx, method, u.String(), reader)
-	if e != nil {
-		return e
+	req, err := httpjson.Request(ctx, method, u.String(), body)
+	if err != nil {
+		return err
 	}
-	req.Header.Set("Accept", "application/json")
-	if body != nil {
-		req.Header.Set("Content-Type", "application/json")
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return err
 	}
-	resp, e := c.http.Do(req)
-	if e != nil {
-		return e
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		var envelope struct {
-			Error httpapi.Error `json:"error"`
-		}
-		if e = json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&envelope); e != nil {
-			return &APIError{resp.StatusCode, "http_error", resp.Status}
-		}
-		return &APIError{resp.StatusCode, envelope.Error.Code, envelope.Error.Message}
-	}
-	if out == nil {
-		io.Copy(io.Discard, resp.Body)
-		return nil
-	}
-	var envelope struct {
-		Data json.RawMessage `json:"data"`
-	}
-	if e = json.NewDecoder(io.LimitReader(resp.Body, 8<<20)).Decode(&envelope); e != nil {
-		return e
-	}
-	return json.Unmarshal(envelope.Data, out)
+	return httpjson.Do(resp, out)
 }

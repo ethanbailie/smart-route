@@ -1,17 +1,18 @@
 package worker
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
-	"io"
 	"net"
 	"net/http"
 	"net/url"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/ethanbailie/smart-route/internal/httpjson"
 )
 
 type HTTPControlPlane struct {
@@ -98,7 +99,7 @@ func (c *HTTPControlPlane) Claim(ctx context.Context, wait time.Duration) (*Clai
 		LeaseTill time.Time `json:"lease_expires_at"`
 	}
 	err := c.do(ctx, http.MethodPost, "/v1/worker/claim", map[string]int64{"wait_seconds": int64(wait / time.Second)}, &out, true)
-	if err == errNoContent {
+	if errors.Is(err, httpjson.ErrNoContent) {
 		return nil, nil
 	}
 	if err != nil {
@@ -135,8 +136,6 @@ func routeName(path string) string {
 	return path
 }
 
-var errNoContent = fmt.Errorf("no content")
-
 func (c *HTTPControlPlane) do(ctx context.Context, method, path string, body, out any, auth bool) (err error) {
 	if auth {
 		if path == "/v1/worker/heartbeat" {
@@ -155,15 +154,10 @@ func (c *HTTPControlPlane) do(ctx context.Context, method, path string, body, ou
 		ctx, finish = observer.Start(ctx, "worker.http", "method", method, "route", routeName(path))
 	}
 	defer func() { finish(err) }()
-	b, err := json.Marshal(body)
+	req, err := httpjson.Request(ctx, method, c.base+path, body)
 	if err != nil {
 		return err
 	}
-	req, err := http.NewRequestWithContext(ctx, method, c.base+path, bytes.NewReader(b))
-	if err != nil {
-		return err
-	}
-	req.Header.Set("Content-Type", "application/json")
 	if auth {
 		c.mu.RLock()
 		id, token := c.workerID, c.token
@@ -175,23 +169,5 @@ func (c *HTTPControlPlane) do(ctx context.Context, method, path string, body, ou
 	if err != nil {
 		return err
 	}
-	defer res.Body.Close()
-	if res.StatusCode == http.StatusNoContent {
-		return errNoContent
-	}
-	if res.StatusCode < 200 || res.StatusCode >= 300 {
-		raw, _ := io.ReadAll(io.LimitReader(res.Body, 1<<20))
-		return fmt.Errorf("control plane %s: %s: %s", path, res.Status, string(raw))
-	}
-	if out == nil {
-		io.Copy(io.Discard, res.Body)
-		return nil
-	}
-	var env struct {
-		Data json.RawMessage `json:"data"`
-	}
-	if err = json.NewDecoder(io.LimitReader(res.Body, 4<<20)).Decode(&env); err != nil {
-		return err
-	}
-	return json.Unmarshal(env.Data, out)
+	return httpjson.Do(res, out)
 }
