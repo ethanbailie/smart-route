@@ -1,18 +1,18 @@
 package worker
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
-	"github.com/ethanbailie/smart-route/internal/domain"
-	"io"
 	"net"
 	"net/http"
 	"net/url"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/ethanbailie/smart-route/internal/httpjson"
 )
 
 type HTTPControlPlane struct {
@@ -53,7 +53,7 @@ func (c *HTTPControlPlane) SetObserver(observer OperationObserver) {
 }
 
 func (c *HTTPControlPlane) Register(ctx context.Context, r RegistrationRequest) (Registration, error) {
-	body := map[string]any{"instance_id": r.InstanceID, "bootstrap_token": r.BootstrapToken, "sandbox_id": r.SandboxID, "sandbox_provider": r.SandboxProvider, "worker_version": r.Version, "protocol_version": "1", "max_concurrency": r.MaxConcurrency, "sandbox_metadata": r.SandboxMetadata, "capabilities": map[string]any{"capabilities": r.Capabilities.Capabilities, "labels": r.Capabilities.Labels, "architecture": r.Capabilities.Architecture, "region": r.Capabilities.Region, "executor_kinds": r.Capabilities.ExecutorKinds, "upstreams": r.Capabilities.Upstreams}}
+	body := map[string]any{"instance_id": r.InstanceID, "bootstrap_token": r.BootstrapToken, "sandbox_id": r.SandboxID, "sandbox_provider": r.SandboxProvider, "worker_version": r.Version, "protocol_version": "1", "max_concurrency": r.MaxConcurrency, "sandbox_metadata": r.SandboxMetadata, "capabilities": map[string]any{"capabilities": r.Capabilities.Capabilities, "labels": r.Capabilities.Labels, "architecture": r.Capabilities.Architecture, "region": r.Capabilities.Region, "executor_kinds": r.Capabilities.ExecutorKinds}}
 	var out struct {
 		WorkerID        string `json:"worker_id"`
 		Token           string `json:"session_token"`
@@ -77,18 +77,12 @@ func (c *HTTPControlPlane) AcknowledgeRecovery(ctx context.Context, id string, e
 func (c *HTTPControlPlane) ReportRecoveryFailure(ctx context.Context, id string, epoch uint64, message string) error {
 	return c.do(ctx, http.MethodPost, "/v1/worker/recovery/ack", map[string]any{"session_id": id, "epoch": epoch, "error": message}, nil, true)
 }
-func (c *HTTPControlPlane) Heartbeat(ctx context.Context, ids []string, slots int, metadata map[string]string, upstreams map[string]domain.UpstreamState) ([]string, error) {
+func (c *HTTPControlPlane) Heartbeat(ctx context.Context, ids []string, slots int, metadata map[string]string) ([]string, error) {
 	var out struct {
-		Token         string   `json:"session_token"`
 		Cancellations []string `json:"cancel_attempts"`
 	}
-	if err := c.do(ctx, http.MethodPost, "/v1/worker/heartbeat", map[string]any{"active_attempts": ids, "available_slots": slots, "sandbox_metadata": metadata, "health": map[string]string{"status": "ok"}, "upstreams": upstreams}, &out, true); err != nil {
+	if err := c.do(ctx, http.MethodPost, "/v1/worker/heartbeat", map[string]any{"active_attempts": ids, "available_slots": slots, "sandbox_metadata": metadata, "health": map[string]string{"status": "ok"}}, &out, true); err != nil {
 		return nil, err
-	}
-	if out.Token != "" {
-		c.mu.Lock()
-		c.token = out.Token
-		c.mu.Unlock()
 	}
 	return out.Cancellations, nil
 }
@@ -105,7 +99,7 @@ func (c *HTTPControlPlane) Claim(ctx context.Context, wait time.Duration) (*Clai
 		LeaseTill time.Time `json:"lease_expires_at"`
 	}
 	err := c.do(ctx, http.MethodPost, "/v1/worker/claim", map[string]int64{"wait_seconds": int64(wait / time.Second)}, &out, true)
-	if err == errNoContent {
+	if errors.Is(err, httpjson.ErrNoContent) {
 		return nil, nil
 	}
 	if err != nil {
@@ -142,8 +136,6 @@ func routeName(path string) string {
 	return path
 }
 
-var errNoContent = fmt.Errorf("no content")
-
 func (c *HTTPControlPlane) do(ctx context.Context, method, path string, body, out any, auth bool) (err error) {
 	if auth {
 		if path == "/v1/worker/heartbeat" {
@@ -162,15 +154,10 @@ func (c *HTTPControlPlane) do(ctx context.Context, method, path string, body, ou
 		ctx, finish = observer.Start(ctx, "worker.http", "method", method, "route", routeName(path))
 	}
 	defer func() { finish(err) }()
-	b, err := json.Marshal(body)
+	req, err := httpjson.Request(ctx, method, c.base+path, body)
 	if err != nil {
 		return err
 	}
-	req, err := http.NewRequestWithContext(ctx, method, c.base+path, bytes.NewReader(b))
-	if err != nil {
-		return err
-	}
-	req.Header.Set("Content-Type", "application/json")
 	if auth {
 		c.mu.RLock()
 		id, token := c.workerID, c.token
@@ -182,23 +169,5 @@ func (c *HTTPControlPlane) do(ctx context.Context, method, path string, body, ou
 	if err != nil {
 		return err
 	}
-	defer res.Body.Close()
-	if res.StatusCode == http.StatusNoContent {
-		return errNoContent
-	}
-	if res.StatusCode < 200 || res.StatusCode >= 300 {
-		raw, _ := io.ReadAll(io.LimitReader(res.Body, 1<<20))
-		return fmt.Errorf("control plane %s: %s: %s", path, res.Status, string(raw))
-	}
-	if out == nil {
-		io.Copy(io.Discard, res.Body)
-		return nil
-	}
-	var env struct {
-		Data json.RawMessage `json:"data"`
-	}
-	if err = json.NewDecoder(io.LimitReader(res.Body, 4<<20)).Decode(&env); err != nil {
-		return err
-	}
-	return json.Unmarshal(env.Data, out)
+	return httpjson.Do(res, out)
 }

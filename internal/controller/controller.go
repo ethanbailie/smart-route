@@ -7,7 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"sort"
+	"slices"
 	"sync/atomic"
 	"time"
 
@@ -182,7 +182,7 @@ type SandboxStore interface {
 	ListSandboxes(context.Context) ([]domain.Sandbox, error)
 	ListWorkers(context.Context) ([]domain.Worker, error)
 	UpsertSandbox(context.Context, domain.Sandbox) error
-	SetSandboxState(context.Context, domain.SandboxID, string, time.Time) error
+	SetSandboxState(context.Context, domain.SandboxID, domain.SandboxState, time.Time) error
 	DeleteSandbox(context.Context, domain.SandboxID) error
 }
 
@@ -249,29 +249,26 @@ func (c *SandboxReconciler) run(ctx context.Context) error {
 				}
 				continue
 			}
-			if record.State == "terminating" {
+			if record.State == domain.SandboxTerminating {
 				if err = provider.Terminate(ctx, item.ID); err != nil {
 					return err
 				}
 				continue
 			}
 			if c.Config.MaxLifetime > 0 && at.Sub(item.CreatedAt) >= c.Config.MaxLifetime {
-				if record.State != "draining" {
-					if err = c.Store.SetSandboxState(ctx, item.ID, "draining", at); err != nil {
+				if record.State != domain.SandboxDraining {
+					if err = c.Store.SetSandboxState(ctx, item.ID, domain.SandboxDraining, at); err != nil {
 						return err
 					}
 				}
 				if !record.DrainAt.IsZero() && at.Sub(record.DrainAt) >= c.Config.DrainGrace {
-					if err = c.Store.SetSandboxState(ctx, item.ID, "terminating", at); err != nil {
-						return err
-					}
-					if err = provider.Terminate(ctx, item.ID); err != nil {
+					if err = terminateSandbox(ctx, c.Store, provider, item.ID, at); err != nil {
 						return err
 					}
 				}
 				continue
 			}
-			record.State = string(item.State)
+			record.State = item.State
 			record.UpdatedAt = at
 			if err = c.Store.UpsertSandbox(ctx, record); err != nil {
 				return err
@@ -279,9 +276,9 @@ func (c *SandboxReconciler) run(ctx context.Context) error {
 		}
 		for _, record := range records {
 			if record.Provider == name && !seen[record.ID] {
-				if record.State == "terminating" || record.State == "terminated" {
+				if record.State == domain.SandboxTerminating || record.State == domain.SandboxTerminated {
 					_ = c.Store.DeleteSandbox(ctx, record.ID)
-				} else if err = c.Store.SetSandboxState(ctx, record.ID, "missing", at); err != nil {
+				} else if err = c.Store.SetSandboxState(ctx, record.ID, domain.SandboxMissing, at); err != nil {
 					return err
 				}
 			}
@@ -294,7 +291,20 @@ func (c *SandboxReconciler) Start(ctx context.Context, interval time.Duration) e
 }
 
 func fromProvider(name string, v sandbox.Sandbox, at time.Time) domain.Sandbox {
-	return domain.Sandbox{ID: v.ID, WorkerID: v.WorkerID, Provider: name, ExternalID: v.ExternalID, Capabilities: v.Capabilities, State: string(v.State), CreatedAt: v.CreatedAt, UpdatedAt: at}
+	return domain.Sandbox{ID: v.ID, WorkerID: v.WorkerID, Provider: name, ExternalID: v.ExternalID, Capabilities: v.Capabilities, State: v.State, CreatedAt: v.CreatedAt, UpdatedAt: at}
+}
+
+type sandboxStateSetter interface {
+	SetSandboxState(context.Context, domain.SandboxID, domain.SandboxState, time.Time) error
+}
+
+// terminateSandbox marks the record terminating before asking the provider to
+// destroy it, so a failed terminate is retried by the next reconciliation.
+func terminateSandbox(ctx context.Context, store sandboxStateSetter, provider sandbox.Provider, id domain.SandboxID, at time.Time) error {
+	if err := store.SetSandboxState(ctx, id, domain.SandboxTerminating, at); err != nil {
+		return err
+	}
+	return provider.Terminate(ctx, id)
 }
 
 type ReaperConfig struct {
@@ -327,10 +337,10 @@ func (c *SandboxReaper) run(ctx context.Context) error {
 	for _, worker := range workers {
 		busy[worker.ID] = worker.ReservedSessionID != "" || len(worker.ActiveAttempts) > 0 || worker.AvailableSlots < worker.MaxConcurrency
 	}
-	sort.Slice(items, func(i, j int) bool { return items[i].CreatedAt.Before(items[j].CreatedAt) })
+	slices.SortFunc(items, func(a, b domain.Sandbox) int { return a.CreatedAt.Compare(b.CreatedAt) })
 	warm := map[string]int{}
 	for _, v := range items {
-		if v.State == "running" || v.State == "ready" {
+		if v.State.Runnable() {
 			warm[v.Provider]++
 		}
 	}
@@ -339,19 +349,16 @@ func (c *SandboxReaper) run(ctx context.Context) error {
 		if err != nil {
 			return err
 		}
-		if v.State == "draining" && !v.DrainAt.IsZero() && at.Sub(v.DrainAt) >= c.Config.DrainGrace {
-			if err = c.Store.SetSandboxState(ctx, v.ID, "terminating", at); err != nil {
-				return err
-			}
-			if err = provider.Terminate(ctx, v.ID); err != nil {
+		if v.State == domain.SandboxDraining && !v.DrainAt.IsZero() && at.Sub(v.DrainAt) >= c.Config.DrainGrace {
+			if err = terminateSandbox(ctx, c.Store, provider, v.ID, at); err != nil {
 				return err
 			}
 			continue
 		}
-		if busy[v.WorkerID] || (v.State != "running" && v.State != "ready") || c.Config.IdleAfter <= 0 || at.Sub(v.UpdatedAt) < c.Config.IdleAfter || warm[v.Provider] <= c.Config.MinimumWarm {
+		if busy[v.WorkerID] || !v.State.Runnable() || c.Config.IdleAfter <= 0 || at.Sub(v.UpdatedAt) < c.Config.IdleAfter || warm[v.Provider] <= c.Config.MinimumWarm {
 			continue
 		}
-		if err = c.Store.SetSandboxState(ctx, v.ID, "draining", at); err != nil {
+		if err = c.Store.SetSandboxState(ctx, v.ID, domain.SandboxDraining, at); err != nil {
 			return err
 		}
 		warm[v.Provider]--

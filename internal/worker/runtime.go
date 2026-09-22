@@ -17,7 +17,6 @@ type Config struct {
 	CancelOnShutdown           bool
 	Secrets                    []string
 	EventRetryBuffer           int
-	UpstreamHealth             func() map[string]domain.UpstreamState
 	Observer                   OperationObserver
 	CheckpointExport           func(context.Context) ([]byte, error)
 	CheckpointRestore          func(context.Context, []byte) error
@@ -130,7 +129,7 @@ func (r *Runtime) Run(ctx context.Context) error {
 	stopExec()
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	_, _ = r.control.Heartbeat(shutdownCtx, nil, r.cfg.Registration.MaxConcurrency, r.cfg.Registration.SandboxMetadata, r.upstreamHealth())
+	_, _ = r.control.Heartbeat(shutdownCtx, nil, r.cfg.Registration.MaxConcurrency, r.cfg.Registration.SandboxMetadata)
 	if err != nil && !errors.Is(err, context.Canceled) {
 		return err
 	}
@@ -239,7 +238,7 @@ func (r *Runtime) heartbeatLoop(ctx context.Context) error {
 	t := time.NewTicker(r.heartbeat)
 	defer t.Stop()
 	for {
-		canceled, err := r.control.Heartbeat(ctx, r.activeIDs(), r.slots(), r.cfg.Registration.SandboxMetadata, r.upstreamHealth())
+		canceled, err := r.control.Heartbeat(ctx, r.activeIDs(), r.slots(), r.cfg.Registration.SandboxMetadata)
 		if err != nil && ctx.Err() == nil {
 			select {
 			case <-ctx.Done():
@@ -285,12 +284,6 @@ func (r *Runtime) activeIDs() []string {
 	return v
 }
 func (r *Runtime) slots() int { return r.cfg.Registration.MaxConcurrency - len(r.activeIDs()) }
-func (r *Runtime) upstreamHealth() map[string]domain.UpstreamState {
-	if r.cfg.UpstreamHealth == nil {
-		return nil
-	}
-	return r.cfg.UpstreamHealth()
-}
 func (r *Runtime) cancelAll() {
 	r.mu.Lock()
 	defer r.mu.Unlock()

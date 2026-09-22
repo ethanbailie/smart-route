@@ -49,34 +49,36 @@ func Open(path string) (*DB, error) {
 }
 func (s *DB) Close() error { return s.db.Close() }
 func (s *DB) migrate(ctx context.Context) error {
-	b, e := migrationFS.ReadFile("migrations/001_initial.sql")
-	if e != nil {
-		return e
+	// schema_migrations is created by 001 itself; the table must exist before
+	// the applied-check below can run on a fresh database.
+	if _, err := s.db.ExecContext(ctx, `CREATE TABLE IF NOT EXISTS schema_migrations (version INTEGER PRIMARY KEY, applied_at TIMESTAMP NOT NULL)`); err != nil {
+		return fmt.Errorf("sqlite migration: %w", err)
 	}
-	if _, e = s.db.ExecContext(ctx, string(b)); e != nil {
-		return fmt.Errorf("sqlite migration: %w", e)
+	files, err := migrationFS.ReadDir("migrations")
+	if err != nil {
+		return err
 	}
-	_, e = s.db.ExecContext(ctx, `INSERT OR IGNORE INTO schema_migrations VALUES(1,?)`, time.Now().UTC())
-	if e != nil {
-		return e
-	}
-	for version := 2; version <= 10; version++ {
+	for _, file := range files {
+		var version int
+		if _, err := fmt.Sscanf(file.Name(), "%d_", &version); err != nil {
+			continue
+		}
 		var applied int
-		if e = s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM schema_migrations WHERE version=?`, version).Scan(&applied); e != nil {
-			return e
+		if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM schema_migrations WHERE version=?`, version).Scan(&applied); err != nil {
+			return err
 		}
 		if applied != 0 {
 			continue
 		}
-		b, e = migrationFS.ReadFile(fmt.Sprintf("migrations/%03d_%s.sql", version, map[int]string{2: "worker_protocol", 3: "worker_identity_capacity", 4: "durable_results", 5: "controllers", 6: "pending_sandboxes", 7: "worker_auth", 8: "sessions", 9: "session_recovery", 10: "recovery_ack_events"}[version]))
-		if e != nil {
-			return e
+		sql, err := migrationFS.ReadFile("migrations/" + file.Name())
+		if err != nil {
+			return err
 		}
 		tx, err := s.db.BeginTx(ctx, nil)
 		if err != nil {
 			return err
 		}
-		if _, err = tx.ExecContext(ctx, string(b)); err != nil {
+		if _, err = tx.ExecContext(ctx, string(sql)); err != nil {
 			tx.Rollback()
 			return fmt.Errorf("sqlite migration %d: %w", version, err)
 		}
@@ -316,15 +318,14 @@ func (s *DB) UpsertWorker(ctx context.Context, w domain.Worker) error {
 	a, _ := enc(w.ActiveAttempts)
 	m, _ := enc(w.SandboxMetadata)
 	h, _ := enc(w.Health)
-	u, _ := enc(w.UpstreamStatus)
-	_, e = s.db.ExecContext(ctx, `INSERT INTO workers(id,capabilities_json,last_seen_at,session_id,session_token_hash,worker_version,protocol_version,slots,active_attempts_json,sandbox_metadata_json,health_json,upstream_status_json,registered_at,instance_id,sandbox_id,sandbox_provider,max_concurrency,available_slots,session_expires_at,reserved_session_id,session_epoch) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET capabilities_json=excluded.capabilities_json,last_seen_at=excluded.last_seen_at,session_id=excluded.session_id,session_token_hash=excluded.session_token_hash,worker_version=excluded.worker_version,protocol_version=excluded.protocol_version,active_attempts_json=excluded.active_attempts_json,sandbox_metadata_json=excluded.sandbox_metadata_json,health_json=excluded.health_json,upstream_status_json=excluded.upstream_status_json,instance_id=excluded.instance_id,sandbox_id=excluded.sandbox_id,sandbox_provider=excluded.sandbox_provider,max_concurrency=excluded.max_concurrency,available_slots=excluded.available_slots,session_expires_at=excluded.session_expires_at,reserved_session_id=excluded.reserved_session_id,session_epoch=excluded.session_epoch`, w.ID, c, w.LastSeenAt.UTC(), w.SessionID, w.SessionTokenHash, w.WorkerVersion, w.ProtocolVersion, w.MaxConcurrency, a, m, h, u, nullTime(w.RegisteredAt), w.InstanceID, w.SandboxID, w.SandboxProvider, w.MaxConcurrency, w.AvailableSlots, nullTime(w.SessionExpiresAt), w.ReservedSessionID, w.SessionEpoch)
+	_, e = s.db.ExecContext(ctx, `INSERT INTO workers(id,capabilities_json,last_seen_at,session_id,session_token_hash,worker_version,protocol_version,slots,active_attempts_json,sandbox_metadata_json,health_json,registered_at,instance_id,sandbox_id,sandbox_provider,max_concurrency,available_slots,session_expires_at,reserved_session_id,session_epoch) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET capabilities_json=excluded.capabilities_json,last_seen_at=excluded.last_seen_at,session_id=excluded.session_id,session_token_hash=excluded.session_token_hash,worker_version=excluded.worker_version,protocol_version=excluded.protocol_version,active_attempts_json=excluded.active_attempts_json,sandbox_metadata_json=excluded.sandbox_metadata_json,health_json=excluded.health_json,instance_id=excluded.instance_id,sandbox_id=excluded.sandbox_id,sandbox_provider=excluded.sandbox_provider,max_concurrency=excluded.max_concurrency,available_slots=excluded.available_slots,session_expires_at=excluded.session_expires_at,reserved_session_id=excluded.reserved_session_id,session_epoch=excluded.session_epoch`, w.ID, c, w.LastSeenAt.UTC(), w.SessionID, w.SessionTokenHash, w.WorkerVersion, w.ProtocolVersion, w.MaxConcurrency, a, m, h, nullTime(w.RegisteredAt), w.InstanceID, w.SandboxID, w.SandboxProvider, w.MaxConcurrency, w.AvailableSlots, nullTime(w.SessionExpiresAt), w.ReservedSessionID, w.SessionEpoch)
 	return e
 }
 func (s *DB) GetWorker(ctx context.Context, id domain.WorkerID) (domain.Worker, error) {
 	var w domain.Worker
-	var c, a, m, h, u string
+	var c, a, m, h string
 	var registered, sessionExpires sql.NullTime
-	e := s.db.QueryRowContext(ctx, `SELECT id,capabilities_json,last_seen_at,session_id,session_token_hash,worker_version,protocol_version,active_attempts_json,sandbox_metadata_json,health_json,upstream_status_json,registered_at,instance_id,sandbox_id,sandbox_provider,max_concurrency,available_slots,session_expires_at,reserved_session_id,session_epoch FROM workers WHERE id=?`, id).Scan(&w.ID, &c, &w.LastSeenAt, &w.SessionID, &w.SessionTokenHash, &w.WorkerVersion, &w.ProtocolVersion, &a, &m, &h, &u, &registered, &w.InstanceID, &w.SandboxID, &w.SandboxProvider, &w.MaxConcurrency, &w.AvailableSlots, &sessionExpires, &w.ReservedSessionID, &w.SessionEpoch)
+	e := s.db.QueryRowContext(ctx, `SELECT id,capabilities_json,last_seen_at,session_id,session_token_hash,worker_version,protocol_version,active_attempts_json,sandbox_metadata_json,health_json,registered_at,instance_id,sandbox_id,sandbox_provider,max_concurrency,available_slots,session_expires_at,reserved_session_id,session_epoch FROM workers WHERE id=?`, id).Scan(&w.ID, &c, &w.LastSeenAt, &w.SessionID, &w.SessionTokenHash, &w.WorkerVersion, &w.ProtocolVersion, &a, &m, &h, &registered, &w.InstanceID, &w.SandboxID, &w.SandboxProvider, &w.MaxConcurrency, &w.AvailableSlots, &sessionExpires, &w.ReservedSessionID, &w.SessionEpoch)
 	if e != nil {
 		return w, mapErr(e)
 	}
@@ -346,8 +347,7 @@ func (s *DB) GetWorker(ctx context.Context, id domain.WorkerID) (domain.Worker, 
 	if e = dec(h, &w.Health); e != nil {
 		return w, e
 	}
-	e = dec(u, &w.UpstreamStatus)
-	return w, e
+	return w, nil
 }
 func (s *DB) GetWorkerByInstanceID(ctx context.Context, instanceID string) (domain.Worker, error) {
 	var id domain.WorkerID
@@ -1024,7 +1024,7 @@ func (s *DB) SetWorkerHealth(ctx context.Context, id domain.WorkerID, health dom
 	return nil
 }
 
-func (s *DB) SetSandboxState(ctx context.Context, id domain.SandboxID, state string, at time.Time) error {
+func (s *DB) SetSandboxState(ctx context.Context, id domain.SandboxID, state domain.SandboxState, at time.Time) error {
 	res, err := s.db.ExecContext(ctx, `UPDATE sandboxes SET state=?,updated_at=?,drain_at=CASE WHEN ?='draining' THEN COALESCE(drain_at,?) ELSE drain_at END WHERE id=?`, state, at.UTC(), state, at.UTC(), id)
 	if err != nil {
 		return err
@@ -1033,7 +1033,7 @@ func (s *DB) SetSandboxState(ctx context.Context, id domain.SandboxID, state str
 	if n != 1 {
 		return store.ErrNotFound
 	}
-	if state == "terminated" || state == "failed" || state == "stopped" {
+	if state == domain.SandboxTerminated || state == domain.SandboxFailed || state == domain.SandboxStopped {
 		return s.RevokeSandboxCredentials(ctx, id)
 	}
 	return nil

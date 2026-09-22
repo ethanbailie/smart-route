@@ -13,9 +13,9 @@ import (
 
 	"github.com/ethanbailie/smart-route/internal/app"
 	"github.com/ethanbailie/smart-route/internal/buildinfo"
+	"github.com/ethanbailie/smart-route/internal/client"
 	"github.com/ethanbailie/smart-route/internal/config"
 	"github.com/ethanbailie/smart-route/internal/store/sqlite"
-	"github.com/ethanbailie/smart-route/pkg/client"
 )
 
 func main() {

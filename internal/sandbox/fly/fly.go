@@ -3,6 +3,7 @@ package fly
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"crypto/rand"
 	"encoding/hex"
@@ -13,7 +14,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"sort"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -182,7 +183,7 @@ func (p *Provider) Create(ctx context.Context, spec sandbox.CreateSpec) (sandbox
 	if providerName == "" {
 		providerName = ProviderName
 	}
-	env := map[string]string{"SMART_ROUTE_CONTROL_PLANE_URL": spec.ControlPlaneURL, "SMART_ROUTE_BOOTSTRAP_TOKEN": spec.BootstrapToken, "SMART_ROUTE_WORKER_ID": string(spec.WorkerID), "SMART_ROUTE_SANDBOX_ID": string(id), "SMART_ROUTE_SANDBOX_PROVIDER": providerName, "SMART_ROUTE_MAX_CONCURRENCY": strconv.Itoa(max(1, spec.WorkerMaxConcurrency)), "SMART_ROUTE_CAPABILITIES": strings.Join(spec.Capabilities.Capabilities, ","), "SMART_ROUTE_UPSTREAMS": strings.Join(spec.Capabilities.Upstreams, ","), "SMART_ROUTE_REGION": spec.Capabilities.Region}
+	env := map[string]string{"SMART_ROUTE_CONTROL_PLANE_URL": spec.ControlPlaneURL, "SMART_ROUTE_BOOTSTRAP_TOKEN": spec.BootstrapToken, "SMART_ROUTE_WORKER_ID": string(spec.WorkerID), "SMART_ROUTE_SANDBOX_ID": string(id), "SMART_ROUTE_SANDBOX_PROVIDER": providerName, "SMART_ROUTE_MAX_CONCURRENCY": strconv.Itoa(max(1, spec.WorkerMaxConcurrency)), "SMART_ROUTE_CAPABILITIES": strings.Join(spec.Capabilities.Capabilities, ","), "SMART_ROUTE_REGION": spec.Capabilities.Region}
 	workerLabels, _ := json.Marshal(spec.Capabilities.Labels)
 	env["SMART_ROUTE_LABELS"] = string(workerLabels)
 	for key, ref := range spec.Environment {
@@ -243,7 +244,7 @@ func (p *Provider) List(ctx context.Context, filter sandbox.Filter) ([]sandbox.S
 			result = append(result, item)
 		}
 	}
-	sort.Slice(result, func(i, j int) bool { return result[i].ID < result[j].ID })
+	slices.SortFunc(result, func(a, b sandbox.Sandbox) int { return cmp.Compare(a.ID, b.ID) })
 	return result, nil
 }
 

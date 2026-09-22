@@ -10,8 +10,6 @@ import (
 	"sync"
 	"testing"
 	"time"
-
-	"github.com/ethanbailie/smart-route/internal/domain"
 )
 
 type fakeControl struct {
@@ -30,7 +28,7 @@ func (f *fakeControl) ReportRecoveryFailure(context.Context, string, uint64, str
 func (f *fakeControl) Register(context.Context, RegistrationRequest) (Registration, error) {
 	return Registration{Heartbeat: time.Hour, Lease: time.Hour}, nil
 }
-func (f *fakeControl) Heartbeat(context.Context, []string, int, map[string]string, map[string]domain.UpstreamState) ([]string, error) {
+func (f *fakeControl) Heartbeat(context.Context, []string, int, map[string]string) ([]string, error) {
 	return nil, nil
 }
 func (f *fakeControl) Claim(ctx context.Context, _ time.Duration) (*Claim, error) {

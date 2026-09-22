@@ -116,35 +116,26 @@ func (e *CommandExecutor) buildEnv(payload map[string]string) ([]string, error) 
 		if len(parts) != 2 {
 			continue
 		}
-		key := parts[0]
+		key, value := parts[0], parts[1]
+		if name, ok := strings.CutPrefix(key, "SMART_ROUTE_ENV_REF_"); ok {
+			if value == "" {
+				continue
+			}
+			resolved, ok := e.resolve(value)
+			if !ok {
+				return nil, fmt.Errorf("secret reference %q not found for %s", value, name)
+			}
+			env[name] = resolved
+			continue
+		}
 		if isBaseEnvVar(key) {
-			env[key] = parts[1]
+			env[key] = value
 		}
 	}
 	for k, v := range payload {
 		if !isSensitiveKey(k) {
 			env[k] = v
 		}
-	}
-	for _, entry := range os.Environ() {
-		parts := strings.SplitN(entry, "=", 2)
-		if len(parts) != 2 {
-			continue
-		}
-		key, ref := parts[0], parts[1]
-		const prefix = "SMART_ROUTE_ENV_REF_"
-		if !strings.HasPrefix(key, prefix) {
-			continue
-		}
-		name := strings.TrimPrefix(key, prefix)
-		if ref == "" {
-			continue
-		}
-		value, ok := e.resolve(ref)
-		if !ok {
-			return nil, fmt.Errorf("secret reference %q not found for %s", ref, name)
-		}
-		env[name] = value
 	}
 	out := make([]string, 0, len(env))
 	for k, v := range env {

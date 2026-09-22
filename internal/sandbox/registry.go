@@ -2,7 +2,7 @@ package sandbox
 
 import (
 	"fmt"
-	"sort"
+	"slices"
 )
 
 // ProviderConfig is deliberately untyped at this boundary so provider-specific
@@ -50,7 +50,7 @@ func (r *Registry) Names() []string {
 	for name := range r.providers {
 		names = append(names, name)
 	}
-	sort.Strings(names)
+	slices.Sort(names)
 	return names
 }
 

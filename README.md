@@ -1,15 +1,14 @@
 # smart-route
 
 smart-route is a provider-agnostic Go control plane and worker runtime for
-routing generic command, HTTP, and upstream jobs to ephemeral sandboxes. Jobs
+routing generic command and HTTP jobs to ephemeral sandboxes. Jobs
 are claimed over an outbound long-poll protocol, so workers need no inbound
 ports. SQLite durably records jobs, attempts, leases, events, and results across
 control-plane restarts.
 
-Routing is based on declared capabilities, health, region, cost, and documented
-upstream availability. Upstream credentials are referenced by logical ID and
-resolved only inside the selected worker; they are not stored in job payloads or
-used to evade provider quotas, access controls, or terms of service.
+Routing is based on declared capabilities, health, region, and pool cost.
+Sandbox credentials are referenced by logical ID and resolved only inside the
+selected worker; they are not stored in job payloads.
 
 Release packaging, a Docker Compose quickstart, Kubernetes topology,
 persistence limitations, and recovery behavior are documented in

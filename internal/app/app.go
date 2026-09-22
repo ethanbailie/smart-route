@@ -38,7 +38,7 @@ func Build(c config.Config) (*Application, error) {
 	if e != nil {
 		return nil, fmt.Errorf("open database: %w", e)
 	}
-	tel := telemetry.New(telemetry.Config{Enabled: c.Telemetry.Enabled, Metrics: c.Telemetry.Metrics, Tracing: c.Telemetry.Tracing, Logger: slog.Default()})
+	tel := telemetry.New(telemetry.Config{Enabled: c.Telemetry.Enabled, Metrics: c.Telemetry.Metrics, Logger: slog.Default()})
 	providerConfig := make(map[string]sandbox.ProviderConfig, len(c.Providers))
 	for n, p := range c.Providers {
 		providerConfig[n] = sandbox.ProviderConfig{Type: p.Type, Config: p.Config}
@@ -70,7 +70,11 @@ func Build(c config.Config) (*Application, error) {
 	if c.Artifacts.Directory != "" {
 		art = &artifact.Filesystem{Root: c.Artifacts.Directory}
 	}
-	apiConfig := httpapi.Config{RequestTimeout: time.Duration(c.HTTP.RequestTimeout), ReadTimeout: time.Duration(c.HTTP.ReadTimeout), WriteTimeout: time.Duration(c.HTTP.WriteTimeout), IdleTimeout: time.Duration(c.HTTP.IdleTimeout), ShutdownTimeout: time.Duration(c.HTTP.ShutdownTimeout), HeartbeatInterval: time.Duration(c.Jobs.HeartbeatInterval), LeaseDuration: time.Duration(c.Jobs.LeaseDuration), WorkerTimeout: time.Duration(c.Jobs.WorkerTimeout), MaxClaimWait: time.Duration(c.Jobs.MaxClaimWait), BootstrapTokenTTL: time.Duration(c.Auth.BootstrapTokenTTL), WorkerSessionTTL: time.Duration(c.Auth.WorkerSessionTTL), PublicAuthToken: c.AuthToken(), RequireTLS: c.TLS.Required, InsecureLocalMode: c.Auth.InsecureLocal, InlineResultBytes: c.Jobs.InlineResultBytes, MaxResultBytes: c.Jobs.MaxResultBytes, MaxEvents: c.Jobs.MaxEvents, Pools: c.Pools, ArtifactStore: art, Telemetry: tel, CheckpointAdapter: cp, CheckpointTTL: time.Duration(c.Recovery.CheckpointTTL), RecoveryBackoff: time.Duration(c.Recovery.BackoffBase), Providers: registry}
+	poolNames := make([]string, 0, len(c.Pools))
+	for _, p := range c.Pools {
+		poolNames = append(poolNames, p.Name)
+	}
+	apiConfig := httpapi.Config{RequestTimeout: time.Duration(c.HTTP.RequestTimeout), ReadTimeout: time.Duration(c.HTTP.ReadTimeout), WriteTimeout: time.Duration(c.HTTP.WriteTimeout), IdleTimeout: time.Duration(c.HTTP.IdleTimeout), ShutdownTimeout: time.Duration(c.HTTP.ShutdownTimeout), HeartbeatInterval: time.Duration(c.Jobs.HeartbeatInterval), LeaseDuration: time.Duration(c.Jobs.LeaseDuration), MaxClaimWait: time.Duration(c.Jobs.MaxClaimWait), BootstrapTokenTTL: time.Duration(c.Auth.BootstrapTokenTTL), WorkerSessionTTL: time.Duration(c.Auth.WorkerSessionTTL), PublicAuthToken: c.AuthToken(), RequireTLS: c.TLS.Required, InsecureLocalMode: c.Auth.InsecureLocal, InlineResultBytes: c.Jobs.InlineResultBytes, MaxResultBytes: c.Jobs.MaxResultBytes, MaxEvents: c.Jobs.MaxEvents, Pools: poolNames, ArtifactStore: art, Telemetry: tel, CheckpointAdapter: cp, CheckpointTTL: time.Duration(c.Recovery.CheckpointTTL), RecoveryBackoff: time.Duration(c.Recovery.BackoffBase), Providers: registry}
 	api := httpapi.New(db, apiConfig)
 	server := api.HTTPServer(c.HTTP.Listen, apiConfig)
 	a := &Application{Config: c, DB: db, Server: server}

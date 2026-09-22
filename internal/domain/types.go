@@ -2,6 +2,7 @@ package domain
 
 import (
 	"encoding/json"
+	"slices"
 	"time"
 )
 
@@ -11,7 +12,6 @@ type WorkerID string
 type SandboxID string
 type LeaseID string
 type EventID string
-type UpstreamID string
 type CredentialRefID string
 type SessionID string
 
@@ -179,7 +179,6 @@ type Capabilities struct {
 	Architecture  Architecture
 	Region        string
 	ExecutorKinds []ExecutorKind
-	Upstreams     []string
 }
 
 // RoutingConstraints describe the capabilities required to execute a job.
@@ -189,33 +188,15 @@ type RoutingConstraints struct {
 	Architecture      Architecture
 	Region            string
 	ExecutorKind      ExecutorKind
-	RequiredUpstream  string
 	PreferredRegion   string
 	PreferredSandbox  SandboxID
 	PreferredProvider string
 	MaxCost           *float64
 }
 
-type UpstreamAvailability string
-
-const (
-	UpstreamAvailable   UpstreamAvailability = "available"
-	UpstreamUnavailable UpstreamAvailability = "unavailable"
-	UpstreamCooldown    UpstreamAvailability = "cooldown"
-)
-
-type UpstreamState struct {
-	State           UpstreamAvailability `json:"state"`
-	Health          float64              `json:"health,omitempty"`
-	CooldownUntil   time.Time            `json:"cooldown_until,omitempty"`
-	BudgetRemaining *float64             `json:"budget_remaining,omitempty"`
-	Cost            *float64             `json:"cost,omitempty"`
-	Metadata        map[string]string    `json:"metadata,omitempty"`
-}
-
 func (c Capabilities) Satisfies(required RoutingConstraints) bool {
 	for _, capability := range required.Capabilities {
-		if !contains(c.Capabilities, capability) {
+		if !slices.Contains(c.Capabilities, capability) {
 			return false
 		}
 	}
@@ -225,10 +206,7 @@ func (c Capabilities) Satisfies(required RoutingConstraints) bool {
 	if required.Region != "" && c.Region != required.Region {
 		return false
 	}
-	if required.ExecutorKind != "" && !contains(c.ExecutorKinds, required.ExecutorKind) {
-		return false
-	}
-	if required.RequiredUpstream != "" && !contains(c.Upstreams, required.RequiredUpstream) {
+	if required.ExecutorKind != "" && !slices.Contains(c.ExecutorKinds, required.ExecutorKind) {
 		return false
 	}
 	for key, value := range required.Labels {
@@ -237,15 +215,6 @@ func (c Capabilities) Satisfies(required RoutingConstraints) bool {
 		}
 	}
 	return true
-}
-
-func contains[T comparable](values []T, wanted T) bool {
-	for _, value := range values {
-		if value == wanted {
-			return true
-		}
-	}
-	return false
 }
 
 type RetryPolicy struct {
@@ -310,7 +279,6 @@ type Worker struct {
 	ActiveAttempts    []AttemptID
 	SandboxMetadata   map[string]string
 	Health            map[string]string
-	UpstreamStatus    map[string]UpstreamState
 	RegisteredAt      time.Time
 	LastSeenAt        time.Time
 }
@@ -323,24 +291,38 @@ const (
 	WorkerDead    WorkerHealth = "dead"
 )
 
+// SandboxState is the sandbox lifecycle: provider-reported states plus the
+// control-plane overlays "ready" (worker registered), "draining",
+// "terminating", and "missing" (absent from the provider).
+type SandboxState string
+
+const (
+	SandboxCreating    SandboxState = "creating"
+	SandboxRunning     SandboxState = "running"
+	SandboxReady       SandboxState = "ready"
+	SandboxStopped     SandboxState = "stopped"
+	SandboxDraining    SandboxState = "draining"
+	SandboxTerminating SandboxState = "terminating"
+	SandboxTerminated  SandboxState = "terminated"
+	SandboxFailed      SandboxState = "failed"
+	SandboxMissing     SandboxState = "missing"
+	SandboxUnknown     SandboxState = "unknown"
+)
+
+// Runnable reports whether the sandbox can accept work.
+func (s SandboxState) Runnable() bool { return s == SandboxRunning || s == SandboxReady }
+
 type Sandbox struct {
 	ID                SandboxID
 	WorkerID          WorkerID
 	Provider          string
 	ExternalID        string
 	Capabilities      Capabilities
-	State             string
+	State             SandboxState
 	CreatedAt         time.Time
 	UpdatedAt         time.Time
 	DrainAt           time.Time
 	ReservedSessionID SessionID
-}
-
-type Upstream struct {
-	ID       UpstreamID
-	Name     string
-	URL      string
-	Metadata map[string]string
 }
 
 // CredentialRef contains locator metadata only; secrets are never persisted.

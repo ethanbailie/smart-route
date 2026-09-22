@@ -30,15 +30,13 @@ func TestAutoscalerAndLeaseMetrics(t *testing.T) {
 	obs.HeartbeatAge(3 * time.Second)
 	obs.Claim("leased")
 	obs.ClaimWait("leased", 10*time.Millisecond)
-	obs.Upstream("primary", "cooldown", 1)
-	obs.UpstreamCall("primary", "throttled", true)
 	if got := testutil.ToFloat64(metric(t, r, "smart_route_lease_expirations_total")); got != 2 {
 		t.Fatalf("lease expirations = %v", got)
 	}
 	if got := testutil.CollectAndCount(r, "smart_route_autoscaler_decisions_total"); got != 2 {
 		t.Fatalf("autoscaler decision series = %d", got)
 	}
-	required := []string{"smart_route_queue_depth", "smart_route_jobs_total", "smart_route_queue_wait_seconds", "smart_route_attempt_duration_seconds", "smart_route_provisioning_duration_seconds", "smart_route_active_leases", "smart_route_heartbeat_age_seconds", "smart_route_claim_wait_seconds", "smart_route_upstream_requests_total", "smart_route_upstream_throttles_total", "smart_route_pool_desired", "smart_route_pool_current"}
+	required := []string{"smart_route_queue_depth", "smart_route_jobs_total", "smart_route_queue_wait_seconds", "smart_route_attempt_duration_seconds", "smart_route_provisioning_duration_seconds", "smart_route_active_leases", "smart_route_heartbeat_age_seconds", "smart_route_claim_wait_seconds", "smart_route_pool_desired", "smart_route_pool_current"}
 	families, err := r.Gather()
 	if err != nil {
 		t.Fatal(err)

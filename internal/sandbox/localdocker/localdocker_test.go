@@ -33,12 +33,12 @@ func TestProvisionAndExternalTermination(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	created, err := provider.Create(context.Background(), sandbox.CreateSpec{WorkerID: "worker-1", ControlPlaneURL: "https://control.example", BootstrapToken: "token", WorkerMaxConcurrency: 3, Image: "override:v2", CPUClass: "2", MemoryClass: "1g", Architecture: "arm64", Environment: map[string]domain.CredentialRefID{"API_KEY": "credential-1"}, BootstrapCommand: []string{"worker", "start"}, BootstrapArtifact: "artifact-1", MaxLifetime: time.Hour, Labels: map[string]string{"pool": "dev"}, Capabilities: domain.Capabilities{Capabilities: []string{"shell"}, Labels: map[string]string{"pool": "dev"}, Upstreams: []string{"llm"}, Region: "west"}})
+	created, err := provider.Create(context.Background(), sandbox.CreateSpec{WorkerID: "worker-1", ControlPlaneURL: "https://control.example", BootstrapToken: "token", WorkerMaxConcurrency: 3, Image: "override:v2", CPUClass: "2", MemoryClass: "1g", Architecture: "arm64", Environment: map[string]domain.CredentialRefID{"API_KEY": "credential-1"}, BootstrapCommand: []string{"worker", "start"}, BootstrapArtifact: "artifact-1", MaxLifetime: time.Hour, Labels: map[string]string{"pool": "dev"}, Capabilities: domain.Capabilities{Capabilities: []string{"shell"}, Labels: map[string]string{"pool": "dev"}, Region: "west"}})
 	if err != nil {
 		t.Fatal(err)
 	}
 	command := strings.Join(runner.calls[0], " ")
-	for _, wanted := range []string{"docker run --detach", "smart-route.managed=true", "SMART_ROUTE_CONTROL_PLANE_URL=https://control.example", "SMART_ROUTE_BOOTSTRAP_TOKEN=token", "SMART_ROUTE_CAPABILITIES=shell", "SMART_ROUTE_LABELS={\"pool\":\"dev\"}", "SMART_ROUTE_UPSTREAMS=llm", "SMART_ROUTE_REGION=west", "SMART_ROUTE_MAX_CONCURRENCY=3", "smart-route.labels={\"pool\":\"dev\"}", "--platform linux/arm64", "--cpus 2", "--memory 1g", "SMART_ROUTE_ENV_REF_API_KEY=credential-1", "SMART_ROUTE_BOOTSTRAP_ARTIFACT=artifact-1", "override:v2 worker start"} {
+	for _, wanted := range []string{"docker run --detach", "smart-route.managed=true", "SMART_ROUTE_CONTROL_PLANE_URL=https://control.example", "SMART_ROUTE_BOOTSTRAP_TOKEN=token", "SMART_ROUTE_CAPABILITIES=shell", "SMART_ROUTE_LABELS={\"pool\":\"dev\"}", "SMART_ROUTE_REGION=west", "SMART_ROUTE_MAX_CONCURRENCY=3", "smart-route.labels={\"pool\":\"dev\"}", "--platform linux/arm64", "--cpus 2", "--memory 1g", "SMART_ROUTE_ENV_REF_API_KEY=credential-1", "SMART_ROUTE_BOOTSTRAP_ARTIFACT=artifact-1", "override:v2 worker start"} {
 		if !strings.Contains(command, wanted) {
 			t.Errorf("command %q does not contain %q", command, wanted)
 		}

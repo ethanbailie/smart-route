@@ -10,7 +10,7 @@ import (
 	"os"
 	"os/signal"
 	"runtime"
-	"sort"
+	"slices"
 	"strconv"
 	"strings"
 	"syscall"
@@ -65,7 +65,7 @@ func load() (worker.Config, worker.ControlPlane, error) {
 	for kind := range executors {
 		executorKinds = append(executorKinds, domain.ExecutorKind(kind))
 	}
-	sort.Slice(executorKinds, func(i, j int) bool { return executorKinds[i] < executorKinds[j] })
+	slices.Sort(executorKinds)
 	caps := domain.Capabilities{Capabilities: capabilities, Labels: labels, Architecture: domain.Architecture(runtime.GOARCH), Region: os.Getenv("SMART_ROUTE_REGION"), ExecutorKinds: executorKinds}
 	registration := worker.RegistrationRequest{BootstrapToken: os.Getenv("SMART_ROUTE_BOOTSTRAP_TOKEN"), InstanceID: instanceID(), SandboxID: envDefault("SMART_ROUTE_SANDBOX_ID", hostname()), SandboxProvider: envDefault("SMART_ROUTE_SANDBOX_PROVIDER", "standalone"), Version: buildinfo.Version, Capabilities: caps, MaxConcurrency: max, SandboxMetadata: map[string]string{"runtime": "worker", "hostname": hostname(), "git_sha": buildinfo.GitSHA, "protocol_version": buildinfo.ProtocolVersion}}
 	cfg := worker.Config{Registration: registration, Executors: executors, ClaimWait: durationEnv("SMART_ROUTE_CLAIM_WAIT", 20*time.Second), ShutdownTimeout: durationEnv("SMART_ROUTE_SHUTDOWN_TIMEOUT", 30*time.Second), CancelOnShutdown: boolEnv("SMART_ROUTE_CANCEL_ON_SHUTDOWN"), Secrets: secrets, EventRetryBuffer: intEnv("SMART_ROUTE_EVENT_RETRY_BUFFER", 64)}

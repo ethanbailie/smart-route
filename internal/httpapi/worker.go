@@ -26,11 +26,10 @@ type workerCapabilities struct {
 	Architecture  domain.Architecture   `json:"architecture"`
 	Region        string                `json:"region"`
 	ExecutorKinds []domain.ExecutorKind `json:"executor_kinds"`
-	Upstreams     []string              `json:"upstreams"`
 }
 
 func (c workerCapabilities) domain() domain.Capabilities {
-	return domain.Capabilities{Capabilities: c.Capabilities, Labels: c.Labels, Architecture: c.Architecture, Region: c.Region, ExecutorKinds: c.ExecutorKinds, Upstreams: c.Upstreams}
+	return domain.Capabilities{Capabilities: c.Capabilities, Labels: c.Labels, Architecture: c.Architecture, Region: c.Region, ExecutorKinds: c.ExecutorKinds}
 }
 
 func validInstanceUUID(value string) bool {
@@ -143,7 +142,7 @@ func (a *API) registerWorker(w http.ResponseWriter, r *http.Request) {
 		internal(w)
 		return
 	}
-	if err := a.store.UpsertSandbox(r.Context(), domain.Sandbox{ID: worker.SandboxID, WorkerID: worker.ID, Provider: worker.SandboxProvider, ExternalID: string(worker.SandboxID), Capabilities: worker.Capabilities, State: "ready", CreatedAt: now, UpdatedAt: now}); err != nil {
+	if err := a.store.UpsertSandbox(r.Context(), domain.Sandbox{ID: worker.SandboxID, WorkerID: worker.ID, Provider: worker.SandboxProvider, ExternalID: string(worker.SandboxID), Capabilities: worker.Capabilities, State: domain.SandboxReady, CreatedAt: now, UpdatedAt: now}); err != nil {
 		internal(w)
 		return
 	}
@@ -233,34 +232,10 @@ func (a *API) authenticatedWorker(w http.ResponseWriter, r *http.Request) (domai
 }
 
 type heartbeatRequest struct {
-	ActiveAttempts  []domain.AttemptID         `json:"active_attempts"`
-	AvailableSlots  int                        `json:"available_slots"`
-	SandboxMetadata map[string]string          `json:"sandbox_metadata"`
-	Health          map[string]string          `json:"health"`
-	Upstreams       map[string]json.RawMessage `json:"upstreams"`
-}
-
-func decodeUpstreams(raw map[string]json.RawMessage) (map[string]domain.UpstreamState, error) {
-	out := make(map[string]domain.UpstreamState, len(raw))
-	for id, value := range raw {
-		var state domain.UpstreamState
-		if err := json.Unmarshal(value, &state); err != nil {
-			var legacy string
-			if legacyErr := json.Unmarshal(value, &legacy); legacyErr != nil {
-				return nil, err
-			}
-			switch strings.ToLower(legacy) {
-			case "healthy", "ok", "ready", "available":
-				state.State, state.Health = domain.UpstreamAvailable, 1
-			case "cooldown":
-				state.State = domain.UpstreamCooldown
-			default:
-				state.State = domain.UpstreamUnavailable
-			}
-		}
-		out[id] = state
-	}
-	return out, nil
+	ActiveAttempts  []domain.AttemptID `json:"active_attempts"`
+	AvailableSlots  int                `json:"available_slots"`
+	SandboxMetadata map[string]string  `json:"sandbox_metadata"`
+	Health          map[string]string  `json:"health"`
 }
 
 func (a *API) heartbeatWorker(w http.ResponseWriter, r *http.Request) {
@@ -301,12 +276,7 @@ func (a *API) heartbeatWorker(w http.ResponseWriter, r *http.Request) {
 		}
 		active = append(active, id)
 	}
-	upstreams, err := decodeUpstreams(req.Upstreams)
-	if err != nil {
-		fail(w, http.StatusBadRequest, CodeInvalidRequest, "invalid upstream state")
-		return
-	}
-	worker.ActiveAttempts, worker.AvailableSlots, worker.SandboxMetadata, worker.Health, worker.UpstreamStatus = active, req.AvailableSlots+len(cancellations), req.SandboxMetadata, req.Health, upstreams
+	worker.ActiveAttempts, worker.AvailableSlots, worker.SandboxMetadata, worker.Health = active, req.AvailableSlots+len(cancellations), req.SandboxMetadata, req.Health
 	if worker.AvailableSlots > worker.MaxConcurrency {
 		worker.AvailableSlots = worker.MaxConcurrency
 	}
@@ -365,23 +335,6 @@ func (a *API) claimWorker(w http.ResponseWriter, r *http.Request) {
 	defer deadline.Stop()
 	for {
 		now := time.Now().UTC()
-		ids, _ := a.store.ExpireLeases(r.Context(), now)
-		if a.telemetry != nil {
-			a.telemetry.LeaseExpired(len(ids))
-		}
-		workers, err := a.store.ListWorkers(r.Context())
-		if err != nil {
-			internal(w)
-			return
-		}
-		for _, candidate := range workers {
-			if candidate.ID != worker.ID && now.Sub(candidate.LastSeenAt) >= a.workerTimeout {
-				ids, _ := a.store.ExpireWorkerLeases(r.Context(), candidate.ID, now)
-				if a.telemetry != nil {
-					a.telemetry.LeaseExpired(len(ids))
-				}
-			}
-		}
 		if req.SandboxID != "" && req.SandboxID != worker.SandboxID {
 			fail(w, http.StatusConflict, "sandbox_identity_mismatch", "claim sandbox does not match registered worker sandbox")
 			return
@@ -445,13 +398,14 @@ type failureRequest struct {
 	Class   domain.FailureClass `json:"class"`
 }
 
-func (a *API) workerAttemptRoute(w http.ResponseWriter, r *http.Request, id domain.AttemptID, action string) {
+func (a *API) workerAttemptRoute(w http.ResponseWriter, r *http.Request) {
 	worker, ok := a.authenticatedWorker(w, r)
 	if !ok {
 		return
 	}
+	id := domain.AttemptID(r.PathValue("id"))
 	now := time.Now().UTC()
-	switch action {
+	switch r.PathValue("action") {
 	case "renew":
 		var req renewRequest
 		if r.ContentLength != 0 && !decodeWorkerJSON(w, r, &req) {

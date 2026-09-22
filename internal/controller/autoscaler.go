@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"cmp"
 	"context"
 	"crypto/rand"
 	"crypto/sha256"
@@ -10,7 +11,8 @@ import (
 	"fmt"
 	"hash/fnv"
 	"math"
-	"sort"
+	"slices"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -98,7 +100,7 @@ type AutoscalerStore interface {
 	ListWorkers(context.Context) ([]domain.Worker, error)
 	GetSandbox(context.Context, domain.SandboxID) (domain.Sandbox, error)
 	UpsertSandbox(context.Context, domain.Sandbox) error
-	SetSandboxState(context.Context, domain.SandboxID, string, time.Time) error
+	SetSandboxState(context.Context, domain.SandboxID, domain.SandboxState, time.Time) error
 	CreateBootstrapToken(context.Context, store.BootstrapToken) error
 	RevokeSandboxCredentials(context.Context, domain.SandboxID) error
 	ListSessions(context.Context, ...domain.SessionState) ([]domain.Session, error)
@@ -169,7 +171,7 @@ func (c *QueueAutoscaler) run(ctx context.Context) error {
 	}
 
 	pools := append([]SandboxPool(nil), c.Pools...)
-	sort.Slice(pools, func(i, j int) bool { return pools[i].Name < pools[j].Name })
+	slices.SortFunc(pools, func(a, b SandboxPool) int { return strings.Compare(a.Name, b.Name) })
 	demand := make(map[string]int, len(pools))
 	for _, job := range jobs {
 		if job.SessionID != "" {
@@ -187,7 +189,7 @@ func (c *QueueAutoscaler) run(ctx context.Context) error {
 	totalCurrent := 0
 	providerCurrent := make(map[string]int)
 	for _, box := range boxes {
-		if box.State != "terminated" && box.State != "missing" {
+		if box.State != domain.SandboxTerminated && box.State != domain.SandboxMissing {
 			totalCurrent++
 			providerCurrent[box.Provider]++
 		}
@@ -211,11 +213,11 @@ func (c *QueueAutoscaler) run(ctx context.Context) error {
 			}
 			owned = append(owned, box)
 			switch box.State {
-			case "creating":
+			case domain.SandboxCreating:
 				decision.Starting++
-			case "draining", "terminating":
+			case domain.SandboxDraining, domain.SandboxTerminating:
 				decision.Draining++
-			case "running", "ready":
+			case domain.SandboxRunning, domain.SandboxReady:
 				if worker, ok := workerBySandbox[box.ID]; ok && worker.Health["status"] != string(domain.WorkerDead) {
 					decision.Ready++
 				} else {
@@ -226,11 +228,11 @@ func (c *QueueAutoscaler) run(ctx context.Context) error {
 		decision.Current = decision.Ready + decision.Starting + decision.Draining
 		remaining := decision.Queued
 		ready := append([]domain.Sandbox(nil), owned...)
-		sort.Slice(ready, func(i, j int) bool { return ready[i].ID < ready[j].ID })
+		slices.SortFunc(ready, func(a, b domain.Sandbox) int { return cmp.Compare(a.ID, b.ID) })
 		active := 0
 		for _, box := range ready {
 			worker, ok := workerBySandbox[box.ID]
-			if !ok || (box.State != "running" && box.State != "ready") || worker.Health["status"] == string(domain.WorkerDead) {
+			if !ok || !box.State.Runnable() || worker.Health["status"] == string(domain.WorkerDead) {
 				continue
 			}
 			slots := worker.AvailableSlots
@@ -262,12 +264,9 @@ func (c *QueueAutoscaler) run(ctx context.Context) error {
 
 		for _, box := range owned {
 			_, registered := workerBySandbox[box.ID]
-			starting := box.State == "creating" || ((box.State == "running" || box.State == "ready") && !registered)
+			starting := box.State == domain.SandboxCreating || (box.State.Runnable() && !registered)
 			if starting && pool.StartupTimeout > 0 && at.Sub(box.CreatedAt) >= pool.StartupTimeout {
-				if err = c.Store.SetSandboxState(ctx, box.ID, "terminating", at); err != nil {
-					return err
-				}
-				if err = provider.Terminate(ctx, box.ID); err != nil {
+				if err = terminateSandbox(ctx, c.Store, provider, box.ID, at); err != nil {
 					return err
 				}
 				decision.Action, decision.Reason, decision.Changed = ScaleTimeout, "sandbox exceeded startup timeout", decision.Changed+1
@@ -463,7 +462,7 @@ func (c *QueueAutoscaler) create(ctx context.Context, provider sandbox.Provider,
 	// with the provider's planned bootstrap identity.
 	if existing, getErr := c.Store.GetSandbox(ctx, record.ID); getErr == nil && existing.WorkerID != "" && existing.WorkerID != spec.WorkerID {
 		record.WorkerID = existing.WorkerID
-		if existing.State == "ready" {
+		if existing.State == domain.SandboxReady {
 			record.State = existing.State
 		}
 		if existing.UpdatedAt.After(record.UpdatedAt) {
@@ -475,7 +474,7 @@ func (c *QueueAutoscaler) create(ctx context.Context, provider sandbox.Provider,
 		return fmt.Errorf("pool %q read registered sandbox: %w", pool.Name, getErr)
 	}
 	if record.State == "" {
-		record.State = "creating"
+		record.State = domain.SandboxCreating
 	}
 	if err = c.Store.UpsertSandbox(ctx, record); err != nil {
 		// Avoid leaking untracked cloud capacity when persistence fails.
@@ -487,18 +486,15 @@ func (c *QueueAutoscaler) create(ctx context.Context, provider sandbox.Provider,
 }
 
 func (c *QueueAutoscaler) drain(ctx context.Context, boxes []domain.Sandbox, workers map[domain.SandboxID]domain.Worker, wanted int, idleTTL time.Duration, at time.Time) (int, error) {
-	sort.Slice(boxes, func(i, j int) bool {
-		if boxes[i].UpdatedAt.Equal(boxes[j].UpdatedAt) {
-			return boxes[i].ID < boxes[j].ID
-		}
-		return boxes[i].UpdatedAt.Before(boxes[j].UpdatedAt)
+	slices.SortFunc(boxes, func(a, b domain.Sandbox) int {
+		return cmp.Or(a.UpdatedAt.Compare(b.UpdatedAt), cmp.Compare(a.ID, b.ID))
 	})
 	drained := 0
 	for _, box := range boxes {
 		if drained == wanted {
 			break
 		}
-		if box.State != "running" && box.State != "ready" {
+		if !box.State.Runnable() {
 			continue
 		}
 		worker, registered := workers[box.ID]
@@ -508,7 +504,7 @@ func (c *QueueAutoscaler) drain(ctx context.Context, boxes []domain.Sandbox, wor
 		if idleTTL > 0 && at.Sub(box.UpdatedAt) < idleTTL {
 			continue
 		}
-		if err := c.Store.SetSandboxState(ctx, box.ID, "draining", at); err != nil {
+		if err := c.Store.SetSandboxState(ctx, box.ID, domain.SandboxDraining, at); err != nil {
 			return drained, err
 		}
 		drained++
@@ -528,21 +524,13 @@ func selectPool(pools []SandboxPool, constraints domain.RoutingConstraints) (San
 	if len(compatible) == 0 {
 		return SandboxPool{}, false
 	}
-	sort.SliceStable(compatible, func(i, j int) bool {
-		a, b := compatible[i], compatible[j]
-		if constraints.PreferredProvider != "" && (a.Provider == constraints.PreferredProvider) != (b.Provider == constraints.PreferredProvider) {
-			return a.Provider == constraints.PreferredProvider
-		}
-		if constraints.PreferredRegion != "" && (poolRegion(a) == constraints.PreferredRegion) != (poolRegion(b) == constraints.PreferredRegion) {
-			return poolRegion(a) == constraints.PreferredRegion
-		}
-		if a.Cost != nil && b.Cost != nil && *a.Cost != *b.Cost {
-			return *a.Cost < *b.Cost
-		}
-		if a.Cost != nil && b.Cost == nil {
-			return true
-		}
-		return a.Name < b.Name
+	slices.SortStableFunc(compatible, func(a, b SandboxPool) int {
+		return cmp.Or(
+			preferredCmp(a.Provider == constraints.PreferredProvider, b.Provider == constraints.PreferredProvider),
+			preferredCmp(poolRegion(a) == constraints.PreferredRegion, poolRegion(b) == constraints.PreferredRegion),
+			costCmp(a.Cost, b.Cost),
+			strings.Compare(a.Name, b.Name),
+		)
 	})
 	return compatible[0], true
 }
@@ -556,6 +544,31 @@ func hasProvider(pools []SandboxPool, constraints domain.RoutingConstraints, pro
 	}
 	return false
 }
+
+// preferredCmp orders preferred (true) before non-preferred (false); a zero
+// preference value keeps the original order.
+func preferredCmp(a, b bool) int {
+	return cmp.Compare(btoi(b), btoi(a))
+}
+
+// costCmp orders nil cost last, matching the original pool tie-break.
+func costCmp(a, b *float64) int {
+	if a != nil && b != nil {
+		return cmp.Compare(*a, *b)
+	}
+	if a != nil {
+		return -1
+	}
+	return 0
+}
+
+func btoi(ok bool) int {
+	if ok {
+		return 1
+	}
+	return 0
+}
+
 func poolRegion(pool SandboxPool) string {
 	if pool.Region != "" {
 		return pool.Region

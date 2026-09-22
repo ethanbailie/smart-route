@@ -10,7 +10,6 @@ type AdminStatus struct {
 	Workers   any `json:"workers"`
 	Sandboxes any `json:"sandboxes"`
 	Pools     any `json:"pools"`
-	Upstreams any `json:"upstreams"`
 }
 
 func (c *Client) AdminStatus(ctx context.Context) (AdminStatus, error) {
