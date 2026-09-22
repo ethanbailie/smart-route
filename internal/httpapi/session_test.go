@@ -9,12 +9,12 @@ import (
 	"time"
 
 	"github.com/ethanbailie/smart-route/internal/checkpoint"
+	"github.com/ethanbailie/smart-route/internal/client"
 	"github.com/ethanbailie/smart-route/internal/domain"
 	"github.com/ethanbailie/smart-route/internal/httpapi"
 	"github.com/ethanbailie/smart-route/internal/sandbox"
 	"github.com/ethanbailie/smart-route/internal/sandbox/fake"
 	"github.com/ethanbailie/smart-route/internal/store/sqlite"
-	"github.com/ethanbailie/smart-route/pkg/client"
 )
 
 func TestSessionClientLifecycle(t *testing.T) {

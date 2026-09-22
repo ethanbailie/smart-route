@@ -12,9 +12,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ethanbailie/smart-route/internal/client"
 	"github.com/ethanbailie/smart-route/internal/httpapi"
 	"github.com/ethanbailie/smart-route/internal/store/sqlite"
-	"github.com/ethanbailie/smart-route/pkg/client"
 )
 
 func TestDockerWorkerE2E(t *testing.T) {
