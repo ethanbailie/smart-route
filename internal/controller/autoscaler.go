@@ -98,7 +98,7 @@ type AutoscalerStore interface {
 	ListWorkers(context.Context) ([]domain.Worker, error)
 	GetSandbox(context.Context, domain.SandboxID) (domain.Sandbox, error)
 	UpsertSandbox(context.Context, domain.Sandbox) error
-	SetSandboxState(context.Context, domain.SandboxID, string, time.Time) error
+	SetSandboxState(context.Context, domain.SandboxID, domain.SandboxState, time.Time) error
 	CreateBootstrapToken(context.Context, store.BootstrapToken) error
 	RevokeSandboxCredentials(context.Context, domain.SandboxID) error
 	ListSessions(context.Context, ...domain.SessionState) ([]domain.Session, error)
@@ -187,7 +187,7 @@ func (c *QueueAutoscaler) run(ctx context.Context) error {
 	totalCurrent := 0
 	providerCurrent := make(map[string]int)
 	for _, box := range boxes {
-		if box.State != "terminated" && box.State != "missing" {
+		if box.State != domain.SandboxTerminated && box.State != domain.SandboxMissing {
 			totalCurrent++
 			providerCurrent[box.Provider]++
 		}
@@ -211,11 +211,11 @@ func (c *QueueAutoscaler) run(ctx context.Context) error {
 			}
 			owned = append(owned, box)
 			switch box.State {
-			case "creating":
+			case domain.SandboxCreating:
 				decision.Starting++
-			case "draining", "terminating":
+			case domain.SandboxDraining, domain.SandboxTerminating:
 				decision.Draining++
-			case "running", "ready":
+			case domain.SandboxRunning, domain.SandboxReady:
 				if worker, ok := workerBySandbox[box.ID]; ok && worker.Health["status"] != string(domain.WorkerDead) {
 					decision.Ready++
 				} else {
@@ -230,7 +230,7 @@ func (c *QueueAutoscaler) run(ctx context.Context) error {
 		active := 0
 		for _, box := range ready {
 			worker, ok := workerBySandbox[box.ID]
-			if !ok || (box.State != "running" && box.State != "ready") || worker.Health["status"] == string(domain.WorkerDead) {
+			if !ok || !box.State.Runnable() || worker.Health["status"] == string(domain.WorkerDead) {
 				continue
 			}
 			slots := worker.AvailableSlots
@@ -262,9 +262,9 @@ func (c *QueueAutoscaler) run(ctx context.Context) error {
 
 		for _, box := range owned {
 			_, registered := workerBySandbox[box.ID]
-			starting := box.State == "creating" || ((box.State == "running" || box.State == "ready") && !registered)
+			starting := box.State == domain.SandboxCreating || (box.State.Runnable() && !registered)
 			if starting && pool.StartupTimeout > 0 && at.Sub(box.CreatedAt) >= pool.StartupTimeout {
-				if err = c.Store.SetSandboxState(ctx, box.ID, "terminating", at); err != nil {
+				if err = c.Store.SetSandboxState(ctx, box.ID, domain.SandboxTerminating, at); err != nil {
 					return err
 				}
 				if err = provider.Terminate(ctx, box.ID); err != nil {
@@ -463,7 +463,7 @@ func (c *QueueAutoscaler) create(ctx context.Context, provider sandbox.Provider,
 	// with the provider's planned bootstrap identity.
 	if existing, getErr := c.Store.GetSandbox(ctx, record.ID); getErr == nil && existing.WorkerID != "" && existing.WorkerID != spec.WorkerID {
 		record.WorkerID = existing.WorkerID
-		if existing.State == "ready" {
+		if existing.State == domain.SandboxReady {
 			record.State = existing.State
 		}
 		if existing.UpdatedAt.After(record.UpdatedAt) {
@@ -475,7 +475,7 @@ func (c *QueueAutoscaler) create(ctx context.Context, provider sandbox.Provider,
 		return fmt.Errorf("pool %q read registered sandbox: %w", pool.Name, getErr)
 	}
 	if record.State == "" {
-		record.State = "creating"
+		record.State = domain.SandboxCreating
 	}
 	if err = c.Store.UpsertSandbox(ctx, record); err != nil {
 		// Avoid leaking untracked cloud capacity when persistence fails.
@@ -498,7 +498,7 @@ func (c *QueueAutoscaler) drain(ctx context.Context, boxes []domain.Sandbox, wor
 		if drained == wanted {
 			break
 		}
-		if box.State != "running" && box.State != "ready" {
+		if !box.State.Runnable() {
 			continue
 		}
 		worker, registered := workers[box.ID]
@@ -508,7 +508,7 @@ func (c *QueueAutoscaler) drain(ctx context.Context, boxes []domain.Sandbox, wor
 		if idleTTL > 0 && at.Sub(box.UpdatedAt) < idleTTL {
 			continue
 		}
-		if err := c.Store.SetSandboxState(ctx, box.ID, "draining", at); err != nil {
+		if err := c.Store.SetSandboxState(ctx, box.ID, domain.SandboxDraining, at); err != nil {
 			return drained, err
 		}
 		drained++

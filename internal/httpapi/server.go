@@ -223,7 +223,7 @@ type Sandbox struct {
 	ID           string              `json:"id"`
 	WorkerID     string              `json:"worker_id"`
 	Capabilities domain.Capabilities `json:"capabilities"`
-	State        string              `json:"state"`
+	State        domain.SandboxState `json:"state"`
 	CreatedAt    time.Time           `json:"created_at"`
 }
 
@@ -805,11 +805,11 @@ func (a *API) adminStatus(w http.ResponseWriter, r *http.Request) {
 			a.telemetry.WorkerHealth(state, float64(count))
 		}
 	}
-	sandboxStates := map[string]int{}
+	sandboxStates := map[domain.SandboxState]int{}
 	for _, x := range boxes {
 		sandboxStates[x.State]++
 		if a.telemetry != nil {
-			a.telemetry.Sandbox(x.Provider, x.Capabilities.Labels["smart-route.pool"], x.State, 1)
+			a.telemetry.Sandbox(x.Provider, x.Capabilities.Labels["smart-route.pool"], string(x.State), 1)
 		}
 	}
 	var oldest *time.Time

@@ -16,16 +16,18 @@ type Snapshotter interface {
 	RestoreSnapshot(context.Context, CreateSpec, io.Reader) (Sandbox, error)
 }
 
-// State is the normalized lifecycle state exposed by every provider.
-type State string
+// State is the normalized lifecycle state exposed by every provider. It
+// aliases the domain type so provider values flow into stored records
+// without conversion; providers only ever produce the states below.
+type State = domain.SandboxState
 
 const (
-	StateCreating   State = "creating"
-	StateRunning    State = "running"
-	StateStopped    State = "stopped"
-	StateTerminated State = "terminated"
-	StateFailed     State = "failed"
-	StateUnknown    State = "unknown"
+	StateCreating   = domain.SandboxCreating
+	StateRunning    = domain.SandboxRunning
+	StateStopped    = domain.SandboxStopped
+	StateTerminated = domain.SandboxTerminated
+	StateFailed     = domain.SandboxFailed
+	StateUnknown    = domain.SandboxUnknown
 )
 
 // CreateSpec contains everything a sandbox needs to join the control plane.

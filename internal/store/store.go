@@ -99,7 +99,7 @@ type SandboxStore interface {
 type ControllerStore interface {
 	TimeoutJobs(context.Context, time.Time) ([]domain.JobID, error)
 	SetWorkerHealth(context.Context, domain.WorkerID, domain.WorkerHealth, time.Time) error
-	SetSandboxState(context.Context, domain.SandboxID, string, time.Time) error
+	SetSandboxState(context.Context, domain.SandboxID, domain.SandboxState, time.Time) error
 }
 type AttemptStore interface {
 	GetAttempt(context.Context, domain.AttemptID) (domain.Attempt, error)

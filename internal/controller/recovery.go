@@ -259,7 +259,7 @@ func (c *RecoveryController) run(ctx context.Context) error {
 			}
 			continue
 		}
-		if e = c.Store.UpsertSandbox(ctx, domain.Sandbox{ID: created.ID, Provider: created.Provider, ExternalID: created.ExternalID, Capabilities: created.Capabilities, State: string(created.State), CreatedAt: created.CreatedAt, UpdatedAt: at, ReservedSessionID: s.ID}); e != nil {
+		if e = c.Store.UpsertSandbox(ctx, domain.Sandbox{ID: created.ID, Provider: created.Provider, ExternalID: created.ExternalID, Capabilities: created.Capabilities, State: created.State, CreatedAt: created.CreatedAt, UpdatedAt: at, ReservedSessionID: s.ID}); e != nil {
 			return e
 		}
 		_ = boxes

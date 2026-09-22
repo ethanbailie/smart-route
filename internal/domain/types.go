@@ -299,13 +299,34 @@ const (
 	WorkerDead    WorkerHealth = "dead"
 )
 
+// SandboxState is the sandbox lifecycle: provider-reported states plus the
+// control-plane overlays "ready" (worker registered), "draining",
+// "terminating", and "missing" (absent from the provider).
+type SandboxState string
+
+const (
+	SandboxCreating    SandboxState = "creating"
+	SandboxRunning     SandboxState = "running"
+	SandboxReady       SandboxState = "ready"
+	SandboxStopped     SandboxState = "stopped"
+	SandboxDraining    SandboxState = "draining"
+	SandboxTerminating SandboxState = "terminating"
+	SandboxTerminated  SandboxState = "terminated"
+	SandboxFailed      SandboxState = "failed"
+	SandboxMissing     SandboxState = "missing"
+	SandboxUnknown     SandboxState = "unknown"
+)
+
+// Runnable reports whether the sandbox can accept work.
+func (s SandboxState) Runnable() bool { return s == SandboxRunning || s == SandboxReady }
+
 type Sandbox struct {
 	ID                SandboxID
 	WorkerID          WorkerID
 	Provider          string
 	ExternalID        string
 	Capabilities      Capabilities
-	State             string
+	State             SandboxState
 	CreatedAt         time.Time
 	UpdatedAt         time.Time
 	DrainAt           time.Time

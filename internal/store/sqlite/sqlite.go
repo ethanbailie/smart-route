@@ -1022,7 +1022,7 @@ func (s *DB) SetWorkerHealth(ctx context.Context, id domain.WorkerID, health dom
 	return nil
 }
 
-func (s *DB) SetSandboxState(ctx context.Context, id domain.SandboxID, state string, at time.Time) error {
+func (s *DB) SetSandboxState(ctx context.Context, id domain.SandboxID, state domain.SandboxState, at time.Time) error {
 	res, err := s.db.ExecContext(ctx, `UPDATE sandboxes SET state=?,updated_at=?,drain_at=CASE WHEN ?='draining' THEN COALESCE(drain_at,?) ELSE drain_at END WHERE id=?`, state, at.UTC(), state, at.UTC(), id)
 	if err != nil {
 		return err
@@ -1031,7 +1031,7 @@ func (s *DB) SetSandboxState(ctx context.Context, id domain.SandboxID, state str
 	if n != 1 {
 		return store.ErrNotFound
 	}
-	if state == "terminated" || state == "failed" || state == "stopped" {
+	if state == domain.SandboxTerminated || state == domain.SandboxFailed || state == domain.SandboxStopped {
 		return s.RevokeSandboxCredentials(ctx, id)
 	}
 	return nil

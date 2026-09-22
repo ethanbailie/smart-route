@@ -142,7 +142,7 @@ func (a *API) registerWorker(w http.ResponseWriter, r *http.Request) {
 		internal(w)
 		return
 	}
-	if err := a.store.UpsertSandbox(r.Context(), domain.Sandbox{ID: worker.SandboxID, WorkerID: worker.ID, Provider: worker.SandboxProvider, ExternalID: string(worker.SandboxID), Capabilities: worker.Capabilities, State: "ready", CreatedAt: now, UpdatedAt: now}); err != nil {
+	if err := a.store.UpsertSandbox(r.Context(), domain.Sandbox{ID: worker.SandboxID, WorkerID: worker.ID, Provider: worker.SandboxProvider, ExternalID: string(worker.SandboxID), Capabilities: worker.Capabilities, State: domain.SandboxReady, CreatedAt: now, UpdatedAt: now}); err != nil {
 		internal(w)
 		return
 	}
