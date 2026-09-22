@@ -38,7 +38,7 @@ const (
 
 type Config struct {
 	RequestTimeout, ReadTimeout, WriteTimeout, IdleTimeout, ShutdownTimeout time.Duration
-	HeartbeatInterval, LeaseDuration, WorkerTimeout, MaxClaimWait           time.Duration
+	HeartbeatInterval, LeaseDuration, MaxClaimWait                          time.Duration
 	BootstrapTokenTTL, WorkerSessionTTL                                     time.Duration
 	Scheduler                                                               scheduler.Scheduler
 	ArtifactStore                                                           ArtifactStore
@@ -55,21 +55,21 @@ type Config struct {
 	}
 }
 type API struct {
-	store                                                                  store.Store
-	mux                                                                    *http.ServeMux
-	timeout, heartbeatInterval, leaseDuration, workerTimeout, maxClaimWait time.Duration
-	bootstrapTokenTTL, workerSessionTTL                                    time.Duration
-	wake                                                                   chan struct{}
-	scheduler                                                              scheduler.Scheduler
-	artifacts                                                              ArtifactStore
-	inlineResultBytes, maxResultBytes, maxEvents                           int
-	pools                                                                  map[string]struct{}
-	publicTokenHash                                                        [32]byte
-	publicAuth, requireTLS, insecureLocalMode                              bool
-	telemetry                                                              *telemetry.Telemetry
-	checkpoints                                                            checkpoint.Adapter
-	checkpointTTL, recoveryBackoff                                         time.Duration
-	providers                                                              interface {
+	store                                                   store.Store
+	mux                                                     *http.ServeMux
+	timeout, heartbeatInterval, leaseDuration, maxClaimWait time.Duration
+	bootstrapTokenTTL, workerSessionTTL                     time.Duration
+	wake                                                    chan struct{}
+	scheduler                                               scheduler.Scheduler
+	artifacts                                               ArtifactStore
+	inlineResultBytes, maxResultBytes, maxEvents            int
+	pools                                                   map[string]struct{}
+	publicTokenHash                                         [32]byte
+	publicAuth, requireTLS, insecureLocalMode               bool
+	telemetry                                               *telemetry.Telemetry
+	checkpoints                                             checkpoint.Adapter
+	checkpointTTL, recoveryBackoff                          time.Duration
+	providers                                               interface {
 		Get(string) (sandbox.Provider, error)
 	}
 }
@@ -241,10 +241,6 @@ func New(s store.Store, c Config) *API {
 	if lease <= 0 {
 		lease = 30 * time.Second
 	}
-	workerTimeout := c.WorkerTimeout
-	if workerTimeout <= 0 {
-		workerTimeout = 3 * heartbeat
-	}
 	wait := c.MaxClaimWait
 	if wait <= 0 || wait >= t {
 		wait = t - time.Second
@@ -281,7 +277,7 @@ func New(s store.Store, c Config) *API {
 	for _, p := range c.Pools {
 		pools[p.Name] = struct{}{}
 	}
-	api := &API{store: s, timeout: t, heartbeatInterval: heartbeat, leaseDuration: lease, workerTimeout: workerTimeout, maxClaimWait: wait, wake: make(chan struct{}, 1), scheduler: policy, artifacts: c.ArtifactStore, inlineResultBytes: inline, maxResultBytes: maxResult, maxEvents: maxEvents, pools: pools, bootstrapTokenTTL: bootstrapTTL, workerSessionTTL: sessionTTL, requireTLS: c.RequireTLS, insecureLocalMode: c.InsecureLocalMode, telemetry: c.Telemetry, checkpoints: c.CheckpointAdapter, checkpointTTL: c.CheckpointTTL, recoveryBackoff: backoff, providers: c.Providers}
+	api := &API{store: s, timeout: t, heartbeatInterval: heartbeat, leaseDuration: lease, maxClaimWait: wait, wake: make(chan struct{}, 1), scheduler: policy, artifacts: c.ArtifactStore, inlineResultBytes: inline, maxResultBytes: maxResult, maxEvents: maxEvents, pools: pools, bootstrapTokenTTL: bootstrapTTL, workerSessionTTL: sessionTTL, requireTLS: c.RequireTLS, insecureLocalMode: c.InsecureLocalMode, telemetry: c.Telemetry, checkpoints: c.CheckpointAdapter, checkpointTTL: c.CheckpointTTL, recoveryBackoff: backoff, providers: c.Providers}
 	if c.PublicAuthToken != "" {
 		api.publicAuth = true
 		api.publicTokenHash = sha256.Sum256([]byte(c.PublicAuthToken))

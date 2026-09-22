@@ -335,23 +335,6 @@ func (a *API) claimWorker(w http.ResponseWriter, r *http.Request) {
 	defer deadline.Stop()
 	for {
 		now := time.Now().UTC()
-		ids, _ := a.store.ExpireLeases(r.Context(), now)
-		if a.telemetry != nil {
-			a.telemetry.LeaseExpired(len(ids))
-		}
-		workers, err := a.store.ListWorkers(r.Context())
-		if err != nil {
-			internal(w)
-			return
-		}
-		for _, candidate := range workers {
-			if candidate.ID != worker.ID && now.Sub(candidate.LastSeenAt) >= a.workerTimeout {
-				ids, _ := a.store.ExpireWorkerLeases(r.Context(), candidate.ID, now)
-				if a.telemetry != nil {
-					a.telemetry.LeaseExpired(len(ids))
-				}
-			}
-		}
 		if req.SandboxID != "" && req.SandboxID != worker.SandboxID {
 			fail(w, http.StatusConflict, "sandbox_identity_mismatch", "claim sandbox does not match registered worker sandbox")
 			return

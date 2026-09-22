@@ -71,7 +71,6 @@ type Database struct {
 type Jobs struct {
 	HeartbeatInterval Duration `yaml:"heartbeat_interval" toml:"heartbeat_interval" json:"heartbeat_interval"`
 	LeaseDuration     Duration `yaml:"lease_duration" toml:"lease_duration" json:"lease_duration"`
-	WorkerTimeout     Duration `yaml:"worker_timeout" toml:"worker_timeout" json:"worker_timeout"`
 	MaxClaimWait      Duration `yaml:"max_claim_wait" toml:"max_claim_wait" json:"max_claim_wait"`
 	MaxEvents         int      `yaml:"max_events" toml:"max_events" json:"max_events"`
 	InlineResultBytes int      `yaml:"inline_result_bytes" toml:"inline_result_bytes" json:"inline_result_bytes"`
@@ -172,7 +171,7 @@ type Recovery struct {
 func Default() Config {
 	return Config{
 		HTTP:     HTTP{Listen: "127.0.0.1:8080", PublicURL: "http://127.0.0.1:8080", RequestTimeout: Duration(30 * time.Second), ReadTimeout: Duration(15 * time.Second), WriteTimeout: Duration(30 * time.Second), IdleTimeout: Duration(60 * time.Second), ShutdownTimeout: Duration(10 * time.Second)},
-		Database: Database{DSN: "smart-route.db"}, Jobs: Jobs{HeartbeatInterval: Duration(10 * time.Second), LeaseDuration: Duration(30 * time.Second), WorkerTimeout: Duration(30 * time.Second), MaxClaimWait: Duration(20 * time.Second), MaxEvents: 100, InlineResultBytes: 64 << 10, MaxResultBytes: 8 << 20, MaxAttempts: 3, RetryBackoff: Duration(time.Second), RetryMaxBackoff: Duration(time.Minute)},
+		Database: Database{DSN: "smart-route.db"}, Jobs: Jobs{HeartbeatInterval: Duration(10 * time.Second), LeaseDuration: Duration(30 * time.Second), MaxClaimWait: Duration(20 * time.Second), MaxEvents: 100, InlineResultBytes: 64 << 10, MaxResultBytes: 8 << 20, MaxAttempts: 3, RetryBackoff: Duration(time.Second), RetryMaxBackoff: Duration(time.Minute)},
 		Providers: map[string]Provider{}, Secrets: Secrets{Environment: map[string]map[string]string{}}, Artifacts: Artifacts{Directory: "artifacts"},
 		Auth: Auth{BootstrapTokenTTL: Duration(5 * time.Minute), WorkerSessionTTL: Duration(5 * time.Minute)}, Controllers: Controllers{LeaseReaper: Duration(5 * time.Second), JobTimeouts: Duration(5 * time.Second), SessionExpiry: Duration(5 * time.Second), WorkerHealth: Duration(10 * time.Second), Reconciler: Duration(30 * time.Second), Reaper: Duration(30 * time.Second), Autoscaler: Duration(10 * time.Second), WorkerSuspectAfter: Duration(30 * time.Second), WorkerDeadAfter: Duration(time.Minute), DrainGrace: Duration(30 * time.Second), Orphans: "terminate", ProviderBackoffBase: Duration(time.Second), ProviderBackoffMax: Duration(time.Minute)}, Recovery: Recovery{CheckpointDirectory: "checkpoints", Strategy: "application", CheckpointTTL: Duration(24 * time.Hour), Interval: Duration(5 * time.Second), BackoffBase: Duration(time.Second), BackoffMax: Duration(time.Minute), MaxAttempts: 5, RetainLatest: 3},
 	}
@@ -263,7 +262,6 @@ func (c Config) Validate() error {
 	if c.Jobs.LeaseDuration <= c.Jobs.HeartbeatInterval {
 		add("jobs.lease_duration", "must exceed heartbeat_interval")
 	}
-	positive("jobs.worker_timeout", c.Jobs.WorkerTimeout)
 	if c.Jobs.MaxEvents < 1 || c.Jobs.InlineResultBytes < 1 || c.Jobs.MaxResultBytes < c.Jobs.InlineResultBytes {
 		add("jobs", "event/result limits are invalid")
 	}
